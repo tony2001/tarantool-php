@@ -2017,6 +2017,10 @@ free_tarantool_object(tarantool_object *tnt TSRMLS_DC)
 	if (tnt == NULL)
 		return;
 
+	if (tnt->host) {
+		efree(tnt->host);
+	}
+
 	if (tnt->stream)
 		php_stream_close(tnt->stream);
 
