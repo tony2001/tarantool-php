@@ -1264,8 +1264,7 @@ PHP_METHOD(tarantool_class, admin)
 	if (!io_buf_recv_yaml(tnt->admin_stream, tnt->io_buf))
 		return;
 
-	char *response = estrndup(tnt->io_buf->value, tnt->io_buf->size);
-	RETURN_STRING(response, 0);
+	RETURN_STRINGL((char *)tnt->io_buf->value, tnt->io_buf->size, 1);
 }
 
 
