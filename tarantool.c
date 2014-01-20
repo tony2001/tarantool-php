@@ -148,7 +148,6 @@ struct tnt_response {
 
 /* module functions list */
 zend_function_entry tarantool_module_functions[] = {
-	PHP_ME(tarantool_class, __construct, NULL, ZEND_ACC_PUBLIC)
 	{NULL, NULL, NULL}
 };
 
