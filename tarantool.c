@@ -499,9 +499,14 @@ PHP_METHOD(tarantool_class, __construct)
 		}
 	}
 
-	/* initialzie object structure */
-	tarantool_object *object = (tarantool_object *) zend_object_store_get_object(
-		id TSRMLS_CC);
+	/* initialize object structure */
+	tarantool_object *object = (tarantool_object *) zend_object_store_get_object(id TSRMLS_CC);
+
+	if (object->host) {
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC, "trying to initialize already initialized Tarantool object");
+		return;
+	}
+
 	object->host = estrdup(host);
 	object->port = port;
 	object->admin_port = admin_port;
@@ -515,8 +520,10 @@ PHP_METHOD(tarantool_class, __construct)
 	if (!object->splice_field) {
 		return;
 	}
-
-	return;
+	object->stream = establish_connection(object->host, object->port);
+	if (!object->stream) {
+		return;
+	}
 }
 
 PHP_METHOD(tarantool_class, select)
@@ -545,14 +552,6 @@ PHP_METHOD(tarantool_class, select)
 
 	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
 		id TSRMLS_CC);
-
-	/* check connection */
-	if (!tnt->stream) {
-		/* establish connection */
-		tnt->stream = establish_connection(tnt->host, tnt->port);
-		if (!tnt->stream)
-			return;
-	}
 
 	/*
 	 * send request
@@ -667,14 +666,6 @@ PHP_METHOD(tarantool_class, insert)
 	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
 		id TSRMLS_CC);
 
-	/* check connection */
-	if (!tnt->stream) {
-		/* establis connection */
-		tnt->stream = establish_connection(tnt->host, tnt->port);
-		if (!tnt->stream)
-			return;
-	}
-
 	/*
 	 * send request
 	 */
@@ -783,14 +774,6 @@ PHP_METHOD(tarantool_class, update_fields)
 
 	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
 		id TSRMLS_CC);
-
-	/* check connection */
-	if (!tnt->stream) {
-		/* establis connection */
-		tnt->stream = establish_connection(tnt->host, tnt->port);
-		if (!tnt->stream)
-			return;
-	}
 
 	/*
 	 * send request
@@ -1029,14 +1012,6 @@ PHP_METHOD(tarantool_class, delete)
 	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
 		id TSRMLS_CC);
 
-	/* check connection */
-	if (!tnt->stream) {
-		/* establis connection */
-		tnt->stream = establish_connection(tnt->host, tnt->port);
-		if (!tnt->stream)
-			return;
-	}
-
 	/*
 	 * send request
 	 */
@@ -1144,14 +1119,6 @@ PHP_METHOD(tarantool_class, call)
 
 	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
 		id TSRMLS_CC);
-
-	/* check connection */
-	if (!tnt->stream) {
-		/* establis connection */
-		tnt->stream = establish_connection(tnt->host, tnt->port);
-		if (!tnt->stream)
-			return;
-	}
 
 	/*
 	 * send request
@@ -2001,6 +1968,8 @@ alloc_tarantool_object(zend_class_entry *entry TSRMLS_DC)
 
 	/* initialize class instance */
 	zend_object_std_init(&tnt->zo, entry TSRMLS_CC);
+	object_properties_init(&tnt->zo, entry);
+
 	new_value.handle = zend_objects_store_put(
 		tnt,
 		(zend_objects_store_dtor_t) zend_objects_destroy_object,
@@ -2015,6 +1984,8 @@ free_tarantool_object(tarantool_object *tnt TSRMLS_DC)
 {
 	if (tnt == NULL)
 		return;
+
+	zend_object_std_dtor(&tnt->zo TSRMLS_CC);
 
 	if (tnt->host) {
 		efree(tnt->host);
@@ -2055,11 +2026,14 @@ establish_connection(char *host, int port)
 	efree(dest_addr);
 
 	/* check result */
-	if (error_code && error_msg) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C),
-								0 TSRMLS_DC,
-								"failed to connect: %s", error_msg);
-		goto process_error;
+	if (!stream) {
+		if (error_code || error_msg) {
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC, "failed to connect to '%s:%d': %s", host, port, error_msg);
+			goto process_error;
+		} else {
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC, "failed to connect to '%s:%d'", host, port);
+			goto process_error;
+		}
 	}
 
 	/* set socket flag 'TCP_NODELAY' */
