@@ -34,7 +34,7 @@
 #include <ext/standard/info.h>
 #include <zend_exceptions.h>
 
-#include "tarantool.h"
+#include "php_tarantool.h"
 
 
 /*============================================================================*

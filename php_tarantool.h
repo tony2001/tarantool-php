@@ -23,6 +23,8 @@
 #include "TSRM.h"
 #endif
 
+extern zend_module_entry tarantool_module_entry;
+#define phpext_tarantool_ptr &tarantool_module_entry
 
 /*============================================================================*
  * Constants
