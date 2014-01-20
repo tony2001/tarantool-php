@@ -358,16 +358,16 @@ static php_stream *
 establish_connection(char *host, int port);
 
 /* find long by key in the hash table */
-static bool
-hash_fing_long(HashTable *hash, char *key, long *value);
+static bool hash_find_long_ex(HashTable *hash, char *key, int key_len, long *value);
+#define hash_find_long(hash, key, value) hash_find_long_ex((hash), (key), strlen(key), (value))
 
 /* find string by key in the hash table */
-static bool
-hash_fing_str(HashTable *hash, char *key, char **value, int *value_length);
+static bool hash_find_str_ex(HashTable *hash, char *key, int key_len, char **value, int *value_length);
+#define hash_find_str(hash, key, value, value_length) hash_find_str_ex((hash), (key), strlen(key), (value), (value_length))
 
 /* find scalar by key in the hash table */
-static bool
-hash_fing_scalar(HashTable *hash, char *key, zval ***value);
+static bool hash_find_scalar_ex(HashTable *hash, char *key, int key_len, zval ***value);
+#define hash_find_scalar(hash, key, value) hash_find_scalar_ex((hash), (key), strlen(key), (value))
 
 
 /*============================================================================*
@@ -819,13 +819,13 @@ PHP_METHOD(tarantool_class, update_fields)
 		long field_no;
 		long opcode;
 
-		if (!hash_fing_long(op_array, "field", &field_no)) {
+		if (!hash_find_long(op_array, "field", &field_no)) {
 			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
 									"can't find 'field' in the update field operation");
 			return;
 		}
 
-		if (!hash_fing_long(op_array, "op", &opcode)) {
+		if (!hash_find_long(op_array, "op", &opcode)) {
 			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
 									"can't find 'op' in the update field operation");
 			return;
@@ -847,7 +847,7 @@ PHP_METHOD(tarantool_class, update_fields)
 		int splice_list_len;
 		switch (opcode) {
 		case TARANTOOL_OP_ASSIGN:
-			if (!hash_fing_scalar(op_array, "arg", &assing_arg)) {
+			if (!hash_find_scalar(op_array, "arg", &assing_arg)) {
 				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
 										"can't find 'arg' in the update field operation");
 				return;
@@ -866,7 +866,7 @@ PHP_METHOD(tarantool_class, update_fields)
 		case TARANTOOL_OP_AND:
 		case TARANTOOL_OP_XOR:
 		case TARANTOOL_OP_OR:
-			if (!hash_fing_long(op_array, "arg", &arith_arg)) {
+			if (!hash_find_long(op_array, "arg", &arith_arg)) {
 				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
 										"can't find 'arg' in the update field operation");
 				return;
@@ -881,19 +881,19 @@ PHP_METHOD(tarantool_class, update_fields)
 			 */
 
 			/* read offset */
-			if (!hash_fing_long(op_array, "offset", &splice_offset)) {
+			if (!hash_find_long(op_array, "offset", &splice_offset)) {
 				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
 										"can't find 'offset' in the update field operation");
 				return;
 			}
 			/* read length */
-			if (!hash_fing_long(op_array, "length", &splice_length)) {
+			if (!hash_find_long(op_array, "length", &splice_length)) {
 				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
 										"can't find 'length' in the update field operation");
 				return;
 			}
 			/* read list */
-			if (!hash_fing_str(op_array, "list", &splice_list, &splice_list_len)) {
+			if (!hash_find_str(op_array, "list", &splice_list, &splice_list_len)) {
 				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
 										"can't find 'list' in the update field operation");
 				return;
@@ -1857,15 +1857,16 @@ io_buf_send_yaml(php_stream *stream, struct io_buf *buf)
 static bool
 io_buf_recv_yaml(php_stream *stream, struct io_buf *buf)
 {
+	size_t line_len;
 	char *line = php_stream_get_line(stream, NULL, 0, NULL);
 	while (strcmp(line, ADMIN_TOKEN_BEGIN) != 0) {
 		line = php_stream_get_line(stream, NULL, 0, NULL);
 	}
 
-	line = php_stream_get_line(stream, NULL, 0, NULL);
+	line = php_stream_get_line(stream, NULL, 0, &line_len);
 	while (strcmp(line, ADMIN_TOKEN_END) != 0) {
-		io_buf_write_str(buf, line, strlen(line));
-		line = php_stream_get_line(stream, NULL, 0, NULL);
+		io_buf_write_str(buf, line, line_len);
+		line = php_stream_get_line(stream, NULL, 0, &line_len);
 	}
 
 	return true;
@@ -2005,7 +2006,6 @@ free_tarantool_object(tarantool_object *tnt TSRMLS_DC)
 static php_stream *
 establish_connection(char *host, int port)
 {
-	char *msg = NULL;
 	/* initialize connection parameters */
 	char *dest_addr = NULL;
 	size_t dest_addr_len = spprintf(&dest_addr, 0, "tcp://%s:%d", host, port);
@@ -2064,11 +2064,10 @@ process_error:
 	return NULL;
 }
 
-static bool
-hash_fing_long(HashTable *hash, char *key, long *value)
+static bool hash_find_long_ex(HashTable *hash, char *key, int key_len, long *value)
 {
 	zval **zvalue = NULL;
-	if (zend_hash_find(hash, key, strlen(key) + 1, (void **)&zvalue) != SUCCESS)
+	if (zend_hash_find(hash, key, key_len + 1, (void **)&zvalue) != SUCCESS)
 		return false;
 	if (Z_TYPE_PP(zvalue) != IS_LONG)
 		return false;
@@ -2076,11 +2075,10 @@ hash_fing_long(HashTable *hash, char *key, long *value)
 	return true;
 }
 
-static bool
-hash_fing_str(HashTable *hash, char *key, char **value, int *value_length)
+static bool hash_find_str_ex(HashTable *hash, char *key, int key_len, char **value, int *value_length)
 {
 	zval **zvalue = NULL;
-	if (zend_hash_find(hash, key, strlen(key) + 1, (void **)&zvalue) != SUCCESS)
+	if (zend_hash_find(hash, key, key_len + 1, (void **)&zvalue) != SUCCESS)
 		return false;
 	if (Z_TYPE_PP(zvalue) != IS_STRING)
 		return false;
@@ -2089,10 +2087,9 @@ hash_fing_str(HashTable *hash, char *key, char **value, int *value_length)
 	return true;
 }
 
-static bool
-hash_fing_scalar(HashTable *hash, char *key, zval ***value)
+static bool hash_find_scalar_ex(HashTable *hash, char *key, int key_len, zval ***value)
 {
-	if (zend_hash_find(hash, key, strlen(key) + 1, (void **)value) != SUCCESS)
+	if (zend_hash_find(hash, key, key_len + 1, (void **)value) != SUCCESS)
 		return false;
 	if (Z_TYPE_PP(*value) != IS_STRING && Z_TYPE_PP(*value) != IS_LONG)
 		return false;
