@@ -1474,18 +1474,22 @@ io_buf_read_field(struct io_buf *buf, zval *tuple)
 		return false;
 
 	int32_t i32_val;
+	uint32_t ui32_val;
 	int64_t i64_val;
+	uint64_t ui64_val;
 	char *str_val;
 	switch (field_length) {
 	case sizeof(int32_t):
 		if (!io_buf_read_int32(buf, &i32_val))
 			return false;
-		add_next_index_long(tuple, i32_val);
+		ui32_val = i32_val;
+		add_next_index_long(tuple, ui32_val);
 		break;
 	case sizeof(int64_t):
 		if (!io_buf_read_int64(buf, &i64_val))
 			return false;
-		add_next_index_long(tuple, i64_val);
+		ui64_val = i64_val;
+		add_next_index_long(tuple, ui64_val);
 		break;
 	default:
 		if (!io_buf_read_str(buf, &str_val, field_length))
@@ -1968,8 +1972,14 @@ alloc_tarantool_object(zend_class_entry *entry TSRMLS_DC)
 
 	/* initialize class instance */
 	zend_object_std_init(&tnt->zo, entry TSRMLS_CC);
+#if PHP_VERSION_ID < 50399
+	{
+		zval *tmp;
+		zend_hash_copy(tnt->zo.properties, &entry->default_properties, (copy_ctor_func_t) zval_add_ref, (void *) &tmp, sizeof(zval *));
+	}
+#else
 	object_properties_init(&tnt->zo, entry);
-
+#endif
 	new_value.handle = zend_objects_store_put(
 		tnt,
 		(zend_objects_store_dtor_t) zend_objects_destroy_object,
