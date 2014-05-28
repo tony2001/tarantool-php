@@ -36,6 +36,8 @@
 
 #include "php_tarantool.h"
 
+static zend_class_entry *t_io_exception_ce;
+static zend_class_entry *tarantool_ce;
 
 /*============================================================================*
  * Tarantool extension structures defintion
@@ -192,7 +194,6 @@ const zend_function_entry tarantool_class_methods[] = {
 };
 
 /* tarantool class */
-zend_class_entry *tarantool_class_ptr;
 
 
 /*============================================================================*
@@ -382,6 +383,7 @@ static bool hash_find_scalar_ex(HashTable *hash, char *key, int key_len, zval **
 /* initialize module function */
 PHP_MINIT_FUNCTION(tarantool)
 {
+	zend_class_entry ce;
 	/* register constants */
 
 	/* register tarantool flags */
@@ -421,10 +423,12 @@ PHP_MINIT_FUNCTION(tarantool)
 	/* register classes */
 
 	/* register tarantool class */
-	zend_class_entry tarantool_class;
-	INIT_CLASS_ENTRY(tarantool_class, "Tarantool", tarantool_class_methods);
-	tarantool_class.create_object = alloc_tarantool_object;
-	tarantool_class_ptr = zend_register_internal_class(&tarantool_class TSRMLS_CC);
+	INIT_CLASS_ENTRY(ce, "Tarantool", tarantool_class_methods);
+	ce.create_object = alloc_tarantool_object;
+	tarantool_ce = zend_register_internal_class(&ce TSRMLS_CC);
+
+	INIT_CLASS_ENTRY(ce, "Tarantool_IO_Exception", NULL);
+	t_io_exception_ce = zend_register_internal_class_ex(&ce, zend_exception_get_default(TSRMLS_C), NULL TSRMLS_CC);
 
 	return SUCCESS;
 }
@@ -459,15 +463,7 @@ PHP_METHOD(tarantool_class, __construct)
 	int host_len = 0;
 	long port = 0;
 	long admin_port = 0;
-	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
-									 getThis(),
-									 "Osl|l",
-									 &id,
-									 tarantool_class_ptr,
-									 &host,
-									 &host_len,
-									 &port,
-									 &admin_port) == FAILURE) {
+	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Osl|l", &id, tarantool_ce, &host, &host_len, &port, &admin_port) == FAILURE) {
 		return;
 	}
 
@@ -477,14 +473,14 @@ PHP_METHOD(tarantool_class, __construct)
 
 	/* check host name */
 	if (host == NULL || host_len == 0) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"invalid tarantool's hostname");
 		return;
 	}
 
 	/* validate port value */
 	if (port <= 0 || port >= 65536) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"invalid primary port value: %li", port);
 		return;
 	}
@@ -493,7 +489,7 @@ PHP_METHOD(tarantool_class, __construct)
 	if (admin_port) {
 		/* validate port value */
 		if (admin_port < 0 || admin_port >= 65536) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"invalid admin port value: %li", admin_port);
 			return;
 		}
@@ -503,7 +499,7 @@ PHP_METHOD(tarantool_class, __construct)
 	tarantool_object *object = (tarantool_object *) zend_object_store_get_object(id TSRMLS_CC);
 
 	if (object->host) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC, "trying to initialize already initialized Tarantool object");
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, "trying to initialize already initialized Tarantool object");
 		return;
 	}
 
@@ -537,16 +533,7 @@ PHP_METHOD(tarantool_class, select)
 	zval *keys_list = NULL;
 	long limit = -1;
 	long offset = 0;
-	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
-									 getThis(),
-									 "Ollz|ll",
-									 &id,
-									 tarantool_class_ptr,
-									 &space_no,
-									 &index_no,
-									 &keys_list,
-									 &limit,
-									 &offset) == FAILURE) {
+	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Ollz|ll", &id, tarantool_ce, &space_no, &index_no, &keys_list, &limit,&offset) == FAILURE) {
 		return;
 	}
 
@@ -562,8 +549,7 @@ PHP_METHOD(tarantool_class, select)
 
 	/* fill select command */
 	/* fill command header */
-	struct tnt_select_request *request = (struct tnt_select_request *) io_buf_write_struct(
-		tnt->io_buf, sizeof(struct tnt_select_request));
+	struct tnt_select_request *request = (struct tnt_select_request *) io_buf_write_struct(tnt->io_buf, sizeof(struct tnt_select_request));
 	if (request == NULL)
 		return;
 	request->space_no = space_no;
@@ -591,18 +577,15 @@ PHP_METHOD(tarantool_class, select)
 
 	/* read response */
 	struct tnt_response *response;
-	if (!io_buf_read_struct(tnt->io_buf,
-						  (void **) &response,
-						  sizeof(struct tnt_response))) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-								"select failed: invalid response was received");
+	if (!io_buf_read_struct(tnt->io_buf, (void **) &response, sizeof(struct tnt_response))) {
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, "select failed: invalid response was received");
 		return;
 	}
 
 	/* check return code */
 	if (response->return_code) {
 		/* error happen, throw exceprion */
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"select failed: %"PRIi32"(0x%08"PRIx32"): %s",
 								response->return_code,
 								response->return_code,
@@ -611,7 +594,7 @@ PHP_METHOD(tarantool_class, select)
 	}
 
 	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"select failed: create array failed");
 		return;
 	}
@@ -623,7 +606,7 @@ PHP_METHOD(tarantool_class, select)
 	zval *tuples_list;
 	MAKE_STD_ZVAL(tuples_list);
 	if (array_init(tuples_list) == FAILURE) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"select failed: create array failed");
 		return;
 	}
@@ -633,7 +616,7 @@ PHP_METHOD(tarantool_class, select)
 	for (i = 0; i < response->count; ++i) {
 		zval *tuple;
 		if (!io_buf_read_tuple(tnt->io_buf, &tuple)) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"select failed: invalid response was received");
 			return;
 		}
@@ -652,14 +635,7 @@ PHP_METHOD(tarantool_class, insert)
 	long space_no = 0;
 	long flags = 0;
 	zval *tuple = NULL;
-	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
-									 getThis(),
-									 "Ola|l",
-									 &id,
-									 tarantool_class_ptr,
-									 &space_no,
-									 &tuple,
-									 &flags) == FAILURE) {
+	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Ola|l", &id, tarantool_ce, &space_no, &tuple, &flags) == FAILURE) {
 		return;
 	}
 
@@ -707,7 +683,7 @@ PHP_METHOD(tarantool_class, insert)
 	if (!io_buf_read_struct(tnt->io_buf,
 						  (void **) &response,
 						  sizeof(struct tnt_response))) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"insert failed: invalid response was received");
 		return;
 	}
@@ -715,7 +691,7 @@ PHP_METHOD(tarantool_class, insert)
 	/* check return code */
 	if (response->return_code) {
 		/* error happen, throw exceprion */
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"insert failed: %"PRIi32"(0x%08"PRIx32"): %s",
 								response->return_code,
 								response->return_code,
@@ -728,7 +704,7 @@ PHP_METHOD(tarantool_class, insert)
 	 */
 
 	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"insert failed: create array failed");
 		return;
 	}
@@ -740,7 +716,7 @@ PHP_METHOD(tarantool_class, insert)
 	if (flags & TARANTOOL_FLAGS_RETURN_TUPLE) {
 		/* ok, the responce should contain inserted tuple */
 		if (!io_buf_read_tuple(tnt->io_buf, &tuple)) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"insert failed: invalid response was received");
 			return;
 		}
@@ -760,15 +736,7 @@ PHP_METHOD(tarantool_class, update_fields)
 	long flags = 0;
 	zval *tuple = NULL;
 	zval *op_list = NULL;
-	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
-									 getThis(),
-									 "Olza|l",
-									 &id,
-									 tarantool_class_ptr,
-									 &space_no,
-									 &tuple,
-									 &op_list,
-									 &flags) == FAILURE) {
+	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Olza|l", &id, tarantool_ce, &space_no, &tuple, &op_list, &flags) == FAILURE) {
 		return;
 	}
 
@@ -810,7 +778,7 @@ PHP_METHOD(tarantool_class, update_fields)
 		 zend_hash_move_forward_ex(op_list_array, &itr)) {
 		/* check operation type */
 		if (Z_TYPE_PP(op) != IS_ARRAY) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"invalid operations list");
 			return;
 		}
@@ -820,13 +788,13 @@ PHP_METHOD(tarantool_class, update_fields)
 		long opcode;
 
 		if (!hash_find_long(op_array, "field", &field_no)) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"can't find 'field' in the update field operation");
 			return;
 		}
 
 		if (!hash_find_long(op_array, "op", &opcode)) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"can't find 'op' in the update field operation");
 			return;
 		}
@@ -848,7 +816,7 @@ PHP_METHOD(tarantool_class, update_fields)
 		switch (opcode) {
 		case TARANTOOL_OP_ASSIGN:
 			if (!hash_find_scalar(op_array, "arg", &assing_arg)) {
-				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 										"can't find 'arg' in the update field operation");
 				return;
 			}
@@ -867,7 +835,7 @@ PHP_METHOD(tarantool_class, update_fields)
 		case TARANTOOL_OP_XOR:
 		case TARANTOOL_OP_OR:
 			if (!hash_find_long(op_array, "arg", &arith_arg)) {
-				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 										"can't find 'arg' in the update field operation");
 				return;
 			}
@@ -882,19 +850,19 @@ PHP_METHOD(tarantool_class, update_fields)
 
 			/* read offset */
 			if (!hash_find_long(op_array, "offset", &splice_offset)) {
-				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 										"can't find 'offset' in the update field operation");
 				return;
 			}
 			/* read length */
 			if (!hash_find_long(op_array, "length", &splice_length)) {
-				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 										"can't find 'length' in the update field operation");
 				return;
 			}
 			/* read list */
 			if (!hash_find_str(op_array, "list", &splice_list, &splice_list_len)) {
-				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 										"can't find 'list' in the update field operation");
 				return;
 			}
@@ -920,7 +888,7 @@ PHP_METHOD(tarantool_class, update_fields)
 
 			break;
 		default:
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"invalid operaion code %i", opcode);
 			return;
 		}
@@ -946,7 +914,7 @@ PHP_METHOD(tarantool_class, update_fields)
 	if (!io_buf_read_struct(tnt->io_buf,
 						  (void **) &response,
 						  sizeof(struct tnt_response))) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"update fields failed: invalid response was received");
 		return;
 	}
@@ -954,7 +922,7 @@ PHP_METHOD(tarantool_class, update_fields)
 	/* check return code */
 	if (response->return_code) {
 		/* error happen, throw exceprion */
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"update fields failed: %"PRIi32"(0x%08"PRIx32"): %s",
 								response->return_code,
 								response->return_code,
@@ -967,7 +935,7 @@ PHP_METHOD(tarantool_class, update_fields)
 	 */
 
 	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"update fields failed: create array failed");
 		return;
 	}
@@ -979,7 +947,7 @@ PHP_METHOD(tarantool_class, update_fields)
 	if ((response->count > 0) && (flags & TARANTOOL_FLAGS_RETURN_TUPLE)) {
 		/* ok, the responce should contain inserted tuple */
 		if (!io_buf_read_tuple(tnt->io_buf, &tuple)) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"update fields failed: invalid response was received");
 			return;
 		}
@@ -998,14 +966,7 @@ PHP_METHOD(tarantool_class, delete)
 	long space_no = 0;
 	long flags = 0;
 	zval *tuple = NULL;
-	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
-									 getThis(),
-									 "Olz|l",
-									 &id,
-									 tarantool_class_ptr,
-									 &space_no,
-									 &tuple,
-									 &flags) == FAILURE) {
+	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Olz|l", &id, tarantool_ce, &space_no, &tuple, &flags) == FAILURE) {
 		return;
 	}
 
@@ -1053,7 +1014,7 @@ PHP_METHOD(tarantool_class, delete)
 	if (!io_buf_read_struct(tnt->io_buf,
 						  (void **) &response,
 						  sizeof(struct tnt_response))) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"delete failed: invalid response was received");
 		return;
 	}
@@ -1061,7 +1022,7 @@ PHP_METHOD(tarantool_class, delete)
 	/* check return code */
 	if (response->return_code) {
 		/* error happen, throw exceprion */
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"delete failed: %"PRIi32"(0x%08"PRIx32"): %s",
 								response->return_code,
 								response->return_code,
@@ -1074,7 +1035,7 @@ PHP_METHOD(tarantool_class, delete)
 	 */
 
 	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"delete failed: create array failed");
 		return;
 	}
@@ -1086,7 +1047,7 @@ PHP_METHOD(tarantool_class, delete)
 	if ((response->count) > 0 && (flags & TARANTOOL_FLAGS_RETURN_TUPLE)) {
 		/* ok, the responce should contain inserted tuple */
 		if (!io_buf_read_tuple(tnt->io_buf, &tuple)) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"delete failed: invalid response was received");
 			return;
 		}
@@ -1106,14 +1067,7 @@ PHP_METHOD(tarantool_class, call)
 	int proc_name_len = 0;
 	zval *tuple = NULL;
 	long flags = 0;
-	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
-									 getThis(),
-									 "Osz|l",
-									 &id,
-									 tarantool_class_ptr,
-									 &proc_name, &proc_name_len,
-									 &tuple,
-									 &flags) == FAILURE) {
+	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Osz|l", &id, tarantool_ce, &proc_name, &proc_name_len, &tuple, &flags) == FAILURE) {
 		return;
 	}
 
@@ -1163,7 +1117,7 @@ PHP_METHOD(tarantool_class, call)
 	if (!io_buf_read_struct(tnt->io_buf,
 						  (void **) &response,
 						  sizeof(struct tnt_response))) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"call failed: invalid response was received");
 		return;
 	}
@@ -1171,7 +1125,7 @@ PHP_METHOD(tarantool_class, call)
 	/* check return code */
 	if (response->return_code) {
 		/* error happen, throw exceprion */
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"call failed: %"PRIi32"(0x%08"PRIx32"): %s",
 								response->return_code,
 								response->return_code,
@@ -1180,7 +1134,7 @@ PHP_METHOD(tarantool_class, call)
 	}
 
 	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"call failed: create array failed");
 		return;
 	}
@@ -1192,7 +1146,7 @@ PHP_METHOD(tarantool_class, call)
 	zval *tuples_list;
 	MAKE_STD_ZVAL(tuples_list);
 	if (array_init(tuples_list) == FAILURE) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"call failed: create array failed");
 		return;
 	}
@@ -1202,7 +1156,7 @@ PHP_METHOD(tarantool_class, call)
 	for (i = 0; i < response->count; ++i) {
 		zval *tuple;
 		if (!io_buf_read_tuple(tnt->io_buf, &tuple)) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"call failed: invalid response was received");
 			return;
 		}
@@ -1218,12 +1172,7 @@ PHP_METHOD(tarantool_class, admin)
 	zval *id;
 	char *cmd = NULL;
 	int cmd_len = 0;
-	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
-									 getThis(),
-									 "Os",
-									 &id,
-									 tarantool_class_ptr,
-									 &cmd, &cmd_len) == FAILURE) {
+	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Os", &id, tarantool_ce, &cmd, &cmd_len) == FAILURE) {
 		return;
 	}
 
@@ -1232,7 +1181,7 @@ PHP_METHOD(tarantool_class, admin)
 
 	/* check admin port */
 	if (!tnt->admin_port) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"admin command not allowed for this connection");
 		return;
 	}
@@ -1245,9 +1194,7 @@ PHP_METHOD(tarantool_class, admin)
 			return;
 
 		/* set string eol */
-		php_stream_locate_eol(tnt->admin_stream,
-							  ADMIN_SEPARATOR,
-							  strlen(ADMIN_SEPARATOR) TSRMLS_DC);
+		php_stream_locate_eol(tnt->admin_stream, ADMIN_SEPARATOR, strlen(ADMIN_SEPARATOR) TSRMLS_DC);
 	}
 
 	/* send request */
@@ -1282,7 +1229,7 @@ io_buf_create()
 {
 	struct io_buf *buf = (struct io_buf *) emalloc(sizeof(struct io_buf));
 	if (!buf) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"allocation memory fail: %s (%i)", strerror(errno), errno);
 		goto failure;
 	}
@@ -1292,7 +1239,7 @@ io_buf_create()
 	buf->read_pos = 0;
 	buf->value = (uint8_t *) emalloc(buf->capacity);
 	if (!buf->value) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"allocation memory fail: %s (%i)", strerror(errno), errno);
 		goto failure;
 	}
@@ -1331,7 +1278,7 @@ io_buf_reserve(struct io_buf *buf, size_t n)
 	size_t new_capacity = io_buf_next_capacity(n);
 	uint8_t *new_value = (uint8_t *) erealloc(buf->value, new_capacity);
 	if (!new_value) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"allocation memory fail: %s (%i)", strerror(errno), errno);
 		return false;
 	}
@@ -1705,7 +1652,7 @@ io_buf_write_tuple_array(struct io_buf *buf, zval *tuple)
 			}
 			break;
 		default:
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"unsupported field type");
 			return false;
 		}
@@ -1729,7 +1676,7 @@ io_buf_write_tuple(struct io_buf *buf, zval *tuple)
 		/* write array as tuple */
 		return io_buf_write_tuple_array(buf, tuple);
 	default:
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"unsupported tuple type");
 		return false;
 	}
@@ -1753,7 +1700,7 @@ io_buf_write_tuples_list_array(struct io_buf *buf, zval *tuples_list)
 		 zend_hash_get_current_data_ex(hash, (void **) &tuple, &itr) == SUCCESS;
 		 zend_hash_move_forward_ex(hash, &itr)) {
 		if (Z_TYPE_PP(tuple) != IS_ARRAY) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"invalid tuples list: expected array of array");
 			return false;
 		}
@@ -1797,8 +1744,7 @@ io_buf_write_tuples_list(struct io_buf *buf, zval *tuples_list)
 		hash = Z_ARRVAL_P(tuples_list);
 		zend_hash_internal_pointer_reset_ex(hash, &itr);
 		if (zend_hash_get_current_data_ex(hash, (void **) &tuple, &itr) != SUCCESS) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-									"invalid tuples list: empty array");
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, "invalid tuples list: empty array");
 			return false;
 		}
 
@@ -1821,15 +1767,13 @@ io_buf_write_tuples_list(struct io_buf *buf, zval *tuples_list)
 			break;
 		default:
 			/* invalid element type */
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-									"unsupported tuple type");
+			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, "unsupported tuple type");
 			return false;
 		}
 
 		break;
 	default:
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-								"unsupported tuple type");
+		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, "unsupported tuple type");
 		return false;
 	}
 
@@ -1843,11 +1787,8 @@ io_buf_write_tuples_list(struct io_buf *buf, zval *tuples_list)
 static bool
 io_buf_send_yaml(php_stream *stream, struct io_buf *buf)
 {
-	if (php_stream_write(stream,
-						 buf->value,
-						 buf->size) != buf->size) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-								"send message fail");
+	if (php_stream_write(stream, buf->value, buf->size) != buf->size) {
+		zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to send message");
 		return false;
 	}
 
@@ -1907,24 +1848,20 @@ io_buf_send_iproto(php_stream *stream, int32_t type, int32_t request_id, struct 
 	size_t length = sizeof(struct iproto_header);
 
 	if (php_stream_write(stream, (char *) &header, length) != length) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-								"failed to send request: could not write "
-								"request header");
+		zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to send request: could not write request header");
 		return false;
 	}
 
 	/* send request */
 	if (php_stream_write(stream, buf->value, buf->size) != buf->size) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-								"failed to send request: could not write "
-								"request body");
+		zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC,	"failed to send request: could not write request body");
 		return false;
 	}
 
 	/* flush request */
-	if (php_stream_flush(stream))
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-								"failed to flush stream");
+	if (php_stream_flush(stream)) {
+		zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to flush stream");
+	}
 
 	return true;
 }
@@ -1936,19 +1873,16 @@ io_buf_recv_iproto(php_stream *stream, struct io_buf *buf)
 	struct iproto_header header;
 	size_t length = sizeof(struct iproto_header);
 	if (php_stream_read_real(stream, (char *) &header, length) != length) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-								"failed to receive response: eof when "
-								"reading iproto header");
+		zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to receive response: eof when reading iproto header");
 		return false;
 	}
 
 	/* receiving body */
 	if (!io_buf_resize(buf, header.length))
 		return false;
+
 	if (php_stream_read_real(stream, buf->value, buf->size) != buf->size) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC,
-								"failed to receive response: eof when "
-								"reading response body");
+		zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to receive response: eof when reading response body");
 		return false;
 	}
 
@@ -2028,19 +1962,16 @@ establish_connection(char *host, int port)
 	int error_code = 0;
 
 	/* establish connection */
-	php_stream *stream = php_stream_xport_create(dest_addr, dest_addr_len,
-												 options, flags,
-												 NULL, &timeout, NULL,
-												 &error_msg, &error_code);
+	php_stream *stream = php_stream_xport_create(dest_addr, dest_addr_len, options, flags, NULL, &timeout, NULL, &error_msg, &error_code);
 	efree(dest_addr);
 
 	/* check result */
 	if (!stream) {
 		if (error_code || error_msg) {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC, "failed to connect to '%s:%d': %s", host, port, error_msg);
+			zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to connect to '%s:%d': %s", host, port, error_msg);
 			goto process_error;
 		} else {
-			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_DC, "failed to connect to '%s:%d'", host, port);
+			zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to connect to '%s:%d'", host, port);
 			goto process_error;
 		}
 	}
@@ -2052,11 +1983,7 @@ establish_connection(char *host, int port)
 							(char *) &flags, sizeof(int));
 	if (result != 0) {
 		char error_buf[64];
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C),
-								0 TSRMLS_DC, "failed to connect: "
-								"setsockopt error %s",
-								strerror_r(errno, error_buf,
-										   sizeof(error_buf)));
+		zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to connect: setsockopt error %s", strerror_r(errno, error_buf, sizeof(error_buf)));
 		goto process_error;
 	}
 
