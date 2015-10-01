@@ -12,7 +12,7 @@
 #ifndef    TRHOW_EXC
 #define    THROW_EXC(...) zend_throw_exception_ex(\
 		zend_exception_get_default(TSRMLS_C),\
-		0 TSRMLS_CC, __VA_ARGS__)
+		0, __VA_ARGS__)
 #endif  /* TRHOW_EXC */
 
 /* UTILITES */
