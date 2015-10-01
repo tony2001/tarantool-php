@@ -13,7 +13,7 @@
 #include <zend_exceptions.h>
 
 #include <ext/standard/info.h>
-#include <ext/standard/php_smart_str.h>
+#include <ext/standard/php_smart_string.h>
 #include <ext/standard/base64.h>
 #include <ext/standard/sha1.h>
 
@@ -178,7 +178,7 @@ tarantool_stream_send(tarantool_object *obj) {
 		return FAILURE;
 	}
 	SSTR_LEN(obj->value) = 0;
-	smart_str_nullify(obj->value);
+	smart_string_nullify(obj->value);
 	return SUCCESS;
 }
 
@@ -281,7 +281,7 @@ static void tarantool_free(tarantool_object *obj) {
 		tarantool_stream_close(obj);
 		tarantool_schema_delete(obj->schema);
 	}
-	if (obj->value) smart_str_free_ex(obj->value, 1);
+	if (obj->value) smart_string_free_ex(obj->value, 1);
 	if (obj->tps)   tarantool_tp_free(obj->tps);
 	if (obj->value) pefree(obj->value, 1);
 	pefree(obj, 1);
@@ -330,7 +330,7 @@ static int64_t tarantool_step_recv(
 		goto error;
 	}
 	size_t body_size = php_mp_unpack_package_size(pack_len);
-	smart_str_ensure(obj->value, body_size);
+	smart_string_ensure(obj->value, body_size);
 	if (tarantool_stream_read(obj, SSTR_POS(obj->value),
 				body_size) != body_size) {
 		THROW_EXC("Can't read query from server");
@@ -365,7 +365,7 @@ static int64_t tarantool_step_recv(
 	if (zend_hash_index_find(hash, TNT_CODE, (void **)&val) == SUCCESS) {
 		if (Z_LVAL_PP(val) == TNT_OK) {
 			SSTR_LEN(obj->value) = 0;
-			smart_str_nullify(obj->value);
+			smart_string_nullify(obj->value);
 			return SUCCESS;
 		}
 		HashTable *hash = HASH_OF(*body);
@@ -384,7 +384,7 @@ error:
 	if (*header) zval_ptr_dtor(header);
 	if (*body) zval_ptr_dtor(body);
 	SSTR_LEN(obj->value) = 0;
-	smart_str_nullify(obj->value);
+	smart_string_nullify(obj->value);
 	return FAILURE;
 }
 
@@ -592,7 +592,7 @@ int get_spaceno_by_name(tarantool_object *obj, zval *id, zval *name) {
 		return FAILURE;
 	}
 	size_t body_size = php_mp_unpack_package_size(pack_len);
-	smart_str_ensure(obj->value, body_size);
+	smart_string_ensure(obj->value, body_size);
 	if (tarantool_stream_read(obj, obj->value->c,
 				body_size) != body_size) {
 		THROW_EXC("Can't read query from server");
@@ -652,7 +652,7 @@ int get_indexno_by_name(tarantool_object *obj, zval *id,
 		return FAILURE;
 	}
 	size_t body_size = php_mp_unpack_package_size(pack_len);
-	smart_str_ensure(obj->value, body_size);
+	smart_string_ensure(obj->value, body_size);
 	if (tarantool_stream_read(obj, obj->value->c,
 				body_size) != body_size) {
 		THROW_EXC("Can't read query from server");
@@ -758,7 +758,7 @@ PHP_METHOD(tarantool_class, __construct) {
 	/* initialzie object structure */
 	obj->host = pestrdup(host, 1);
 	obj->port = port;
-	obj->value = (smart_str *)pemalloc(sizeof(smart_str), 1);
+	obj->value = (smart_string *)pemalloc(sizeof(smart_string), 1);
 	obj->auth = 0;
 	obj->greeting = (char *)pecalloc(sizeof(char), GREETING_SIZE, 1);
 	obj->salt = NULL;
@@ -769,7 +769,7 @@ PHP_METHOD(tarantool_class, __construct) {
 	obj->value->len = 0;
 	obj->value->a = 0;
 	obj->value->c = NULL;
-	smart_str_ensure(obj->value, GREETING_SIZE);
+	smart_string_ensure(obj->value, GREETING_SIZE);
 	obj->tps = tarantool_tp_new(obj->value);
 	return;
 }
@@ -815,7 +815,7 @@ int __tarantool_authenticate(tarantool_object *obj) {
 			return FAILURE;
 		}
 		size_t body_size = php_mp_unpack_package_size(pack_len);
-		smart_str_ensure(obj->value, body_size);
+		smart_string_ensure(obj->value, body_size);
 		if (tarantool_stream_read(obj, obj->value->c,
 					body_size) != body_size) {
 			THROW_EXC("Can't read query from server");

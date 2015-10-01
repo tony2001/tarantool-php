@@ -17,82 +17,82 @@
 
 /* UTILITES */
 
-int smart_str_ensure(smart_str *str, size_t len) {
+int smart_string_ensure(smart_string *str, size_t len) {
 	if (SSTR_AWA(str) > SSTR_LEN(str) + len)
 		return 0;
 	size_t needed = str->a * 2;
 	if (SSTR_LEN(str) + len > needed)
 		needed = SSTR_LEN(str) + len;
 	register size_t __n1;
-	smart_str_alloc4(str, needed, 1, __n1);
+	smart_string_alloc4(str, needed, 1, __n1);
 	return 0;
 }
 
-inline void smart_str_nullify(smart_str *str) {
+inline void smart_string_nullify(smart_string *str) {
 	memset(SSTR_BEG(str), 0, SSTR_AWA(str));
 }
 
 /* PACKING ROUTINES */
 
-void php_mp_pack_nil(smart_str *str) {
+void php_mp_pack_nil(smart_string *str) {
 	size_t needed = mp_sizeof_nil();
-	smart_str_ensure(str, needed);
+	smart_string_ensure(str, needed);
 	mp_encode_nil(SSTR_POS(str));
 	SSTR_LEN(str) += needed;
 }
 
-void php_mp_pack_long_pos(smart_str *str, long val) {
+void php_mp_pack_long_pos(smart_string *str, long val) {
 	size_t needed = mp_sizeof_uint(val);
-	smart_str_ensure(str, needed);
+	smart_string_ensure(str, needed);
 	mp_encode_uint(SSTR_POS(str), val);
 	SSTR_LEN(str) += needed;
 }
 
-void php_mp_pack_long_neg(smart_str *str, long val) {
+void php_mp_pack_long_neg(smart_string *str, long val) {
 	size_t needed = mp_sizeof_int(val);
-	smart_str_ensure(str, needed);
+	smart_string_ensure(str, needed);
 	mp_encode_int(SSTR_POS(str), val);
 	SSTR_LEN(str) += needed;
 }
 
-void php_mp_pack_long(smart_str *str, long val) {
+void php_mp_pack_long(smart_string *str, long val) {
 	if (val >= 0)
 		php_mp_pack_long_pos(str, val);
 	else
 		php_mp_pack_long_neg(str, val);
 }
 
-void php_mp_pack_double(smart_str *str, double val) {
+void php_mp_pack_double(smart_string *str, double val) {
 	size_t needed = mp_sizeof_double(val);
-	smart_str_ensure(str, needed);
+	smart_string_ensure(str, needed);
 	mp_encode_double(SSTR_POS(str), val);
 	SSTR_LEN(str) += needed;
 }
 
-void php_mp_pack_bool(smart_str *str, unsigned char val) {
+void php_mp_pack_bool(smart_string *str, unsigned char val) {
 	size_t needed = mp_sizeof_bool(val);
-	smart_str_ensure(str, needed);
+	smart_string_ensure(str, needed);
 	mp_encode_bool(SSTR_POS(str), val);
 	SSTR_LEN(str) += needed;
 }
 
-void php_mp_pack_string(smart_str *str, char *c, size_t len) {
+void php_mp_pack_string(smart_string *str, char *c, size_t len) {
 	size_t needed = mp_sizeof_str(len);
-	smart_str_ensure(str, needed);
+	smart_string_ensure(str, needed);
 	mp_encode_str(SSTR_POS(str), c, len);
 	SSTR_LEN(str) += needed;
 }
 
-void php_mp_pack_hash(smart_str *str, size_t len) {
+void php_mp_pack_hash(smart_string *str, size_t len) {
 	size_t needed = mp_sizeof_map(len);
-	smart_str_ensure(str, needed);
+	smart_string_ensure(str, needed);
 	mp_encode_map(SSTR_POS(str), len);
 	SSTR_LEN(str) += needed;
 }
 
-void php_mp_pack_array(smart_str *str, size_t len) {
+void php_mp_pack_array(smart_string *str, size_t len) {
 	size_t needed = mp_sizeof_array(len);
-	smart_str_ensure(str, needed);
+	smart_string_ensure(str, needed);
 	mp_encode_array(SSTR_POS(str), len);
 	SSTR_LEN(str) += needed;
 }
@@ -116,7 +116,7 @@ int php_mp_is_hash(zval *val) {
 	return 0;
 }
 
-void php_mp_pack_array_recursively(smart_str *str, zval *val) {
+void php_mp_pack_array_recursively(smart_string *str, zval *val) {
 	HashTable *ht = Z_ARRVAL_P(val);
 	size_t n = zend_hash_num_elements(ht);
 
@@ -141,7 +141,7 @@ void php_mp_pack_array_recursively(smart_str *str, zval *val) {
 	}
 }
 
-void php_mp_pack_hash_recursively(smart_str *str, zval *val) {
+void php_mp_pack_hash_recursively(smart_string *str, zval *val) {
 	HashTable *ht = Z_ARRVAL_P(val);
 	size_t n = zend_hash_num_elements(ht);
 
@@ -187,7 +187,7 @@ void php_mp_pack_hash_recursively(smart_str *str, zval *val) {
 	}
 }
 
-void php_mp_pack(smart_str *str, zval *val) {
+void php_mp_pack(smart_string *str, zval *val) {
 	switch(Z_TYPE_P(val)) {
 	case IS_NULL:
 		php_mp_pack_nil(str);
@@ -567,9 +567,9 @@ size_t php_mp_check(const char *str, size_t str_size) {
 	return mp_check(&str, str + str_size);
 }
 
-void php_mp_pack_package_size(smart_str *str, size_t val) {
+void php_mp_pack_package_size(smart_string *str, size_t val) {
 	size_t needed = 5;
-	smart_str_ensure(str, needed);
+	smart_string_ensure(str, needed);
 	*(SSTR_POS(str)) = 0xce;
 	*(uint32_t *)(SSTR_POS(str) + 1) = mp_bswap_u32(val);
 	SSTR_LEN(str) += needed;
