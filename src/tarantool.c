@@ -51,7 +51,7 @@ ZEND_DECLARE_MODULE_GLOBALS(tarantool)
 			RETURN_FALSE;                                          \
 
 #define THROW_EXC(...) zend_throw_exception_ex( \
-	zend_exception_get_default(TSRMLS_C),   \
+	zend_exception_get_default(),   \
 	0, __VA_ARGS__)
 
 #define TARANTOOL_RETURN_DATA(HT, HEAD, BODY)                      \
@@ -549,8 +549,7 @@ zval *tarantool_update_verify_args(zval *args) {
 			THROW_EXC("Internal Array Error");
 			goto cleanup;
 		}
-		zval *op_arr = tarantool_update_verify_op(*op, key_index
-				TSRMLS_CC);
+		zval *op_arr = tarantool_update_verify_op(*op, key_index);
 		if (!op_arr)
 			goto cleanup;
 		if (add_next_index_zval(arr, op_arr) == FAILURE) {
