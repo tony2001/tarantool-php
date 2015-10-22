@@ -38,6 +38,7 @@
 
 static zend_class_entry *t_io_exception_ce;
 static zend_class_entry *tarantool_ce;
+static zend_object_handlers tarantool_obj_handlers;
 
 /*============================================================================*
  * Tarantool extension structures defintion
@@ -57,7 +58,6 @@ struct io_buf {
 
 /* tarantool object */
 typedef struct tarantool_object {
-	zend_object zo;
 	/* host name */
 	char *host;
 	/* tarantool primary port */
@@ -72,6 +72,7 @@ typedef struct tarantool_object {
 	struct io_buf *io_buf;
 	/* additional buffer for splice args */
 	struct io_buf *splice_field;
+	zend_object zo;
 } tarantool_object;
 
 /* iproto header */
@@ -255,7 +256,7 @@ io_buf_read_field(struct io_buf *buf, zval *tuple);
 
 /* read tuple from buffer */
 static bool
-io_buf_read_tuple(struct io_buf *buf, zval **tuple);
+io_buf_read_tuple(struct io_buf *buf, zval *tuple);
 
 /*
  * Write to I/O buffer functions
@@ -347,12 +348,12 @@ io_buf_recv_iproto(php_stream *stream, struct io_buf *buf);
  *----------------------------------------------------------------------------*/
 
 /* tarantool class instance allocator */
-static zend_object_value
+static zend_object *
 alloc_tarantool_object(zend_class_entry *entry TSRMLS_DC);
 
 /* free tarantool class instance */
 static void
-free_tarantool_object(tarantool_object *tnt TSRMLS_DC);
+free_tarantool_object(zend_object *obj TSRMLS_DC);
 
 /* establic connection */
 static php_stream *
@@ -367,9 +368,14 @@ static bool hash_find_str_ex(HashTable *hash, char *key, int key_len, char **val
 #define hash_find_str(hash, key, value, value_length) hash_find_str_ex((hash), (key), strlen(key), (value), (value_length))
 
 /* find scalar by key in the hash table */
-static bool hash_find_scalar_ex(HashTable *hash, char *key, int key_len, zval ***value);
+static bool hash_find_scalar_ex(HashTable *hash, char *key, int key_len, zval **value);
 #define hash_find_scalar(hash, key, value) hash_find_scalar_ex((hash), (key), strlen(key), (value))
 
+static inline tarantool_object *php_tarantool_object(zend_object *obj) {
+	return (tarantool_object *)((char*)(obj) - XtOffsetOf(tarantool_object, zo));
+}
+
+#define Z_TARANTOOL_OBJ(zv) php_tarantool_object(Z_OBJ_P(zv))
 
 /*============================================================================*
  * Interface definition
@@ -427,8 +433,12 @@ PHP_MINIT_FUNCTION(tarantool)
 	ce.create_object = alloc_tarantool_object;
 	tarantool_ce = zend_register_internal_class(&ce TSRMLS_CC);
 
+	memcpy(&tarantool_obj_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
+	tarantool_obj_handlers.offset = XtOffsetOf(tarantool_object, zo);
+	tarantool_obj_handlers.free_obj = free_tarantool_object;
+
 	INIT_CLASS_ENTRY(ce, "Tarantool_IO_Exception", NULL);
-	t_io_exception_ce = zend_register_internal_class_ex(&ce, zend_exception_get_default(TSRMLS_C), NULL TSRMLS_CC);
+	t_io_exception_ce = zend_register_internal_class_ex(&ce, zend_exception_get_default(TSRMLS_C) TSRMLS_CC);
 
 	return SUCCESS;
 }
@@ -460,9 +470,10 @@ PHP_METHOD(tarantool_class, __construct)
 	 */
 	zval *id;
 	char *host = NULL;
-	int host_len = 0;
+	size_t host_len = 0;
 	long port = 0;
 	long admin_port = 0;
+
 	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Osl|l", &id, tarantool_ce, &host, &host_len, &port, &admin_port) == FAILURE) {
 		return;
 	}
@@ -496,7 +507,7 @@ PHP_METHOD(tarantool_class, __construct)
 	}
 
 	/* initialize object structure */
-	tarantool_object *object = (tarantool_object *) zend_object_store_get_object(id TSRMLS_CC);
+	tarantool_object *object = Z_TARANTOOL_OBJ(getThis());
 
 	if (object->host) {
 		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, "trying to initialize already initialized Tarantool object");
@@ -533,12 +544,12 @@ PHP_METHOD(tarantool_class, select)
 	zval *keys_list = NULL;
 	long limit = -1;
 	long offset = 0;
+
 	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Ollz|ll", &id, tarantool_ce, &space_no, &index_no, &keys_list, &limit,&offset) == FAILURE) {
 		return;
 	}
 
-	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
-		id TSRMLS_CC);
+	tarantool_object *tnt = Z_TARANTOOL_OBJ(getThis());
 
 	/*
 	 * send request
@@ -603,9 +614,8 @@ PHP_METHOD(tarantool_class, select)
 	add_assoc_long(return_value, "count", response->count);
 
 	/* put tuple list to result array */
-	zval *tuples_list;
-	MAKE_STD_ZVAL(tuples_list);
-	if (array_init(tuples_list) == FAILURE) {
+	zval tuples_list;
+	if (array_init(&tuples_list) == FAILURE) {
 		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"select failed: create array failed");
 		return;
@@ -614,16 +624,16 @@ PHP_METHOD(tarantool_class, select)
 	/* read tuples for responce */
 	int i;
 	for (i = 0; i < response->count; ++i) {
-		zval *tuple;
+		zval tuple;
 		if (!io_buf_read_tuple(tnt->io_buf, &tuple)) {
 			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"select failed: invalid response was received");
 			return;
 		}
-		add_next_index_zval(tuples_list, tuple);
+		add_next_index_zval(&tuples_list, &tuple);
 	}
 
-	add_assoc_zval(return_value, "tuples_list", tuples_list);
+	add_assoc_zval(return_value, "tuples_list", &tuples_list);
 }
 
 PHP_METHOD(tarantool_class, insert)
@@ -634,13 +644,13 @@ PHP_METHOD(tarantool_class, insert)
 	zval *id;
 	long space_no = 0;
 	long flags = 0;
-	zval *tuple = NULL;
+	zval tuple;
+
 	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Ola|l", &id, tarantool_ce, &space_no, &tuple, &flags) == FAILURE) {
 		return;
 	}
 
-	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
-		id TSRMLS_CC);
+	tarantool_object *tnt = Z_TARANTOOL_OBJ(getThis());
 
 	/*
 	 * send request
@@ -660,7 +670,7 @@ PHP_METHOD(tarantool_class, insert)
 	/* flags */
 	request->flags = flags;
 	/* tuple */
-	if (!io_buf_write_tuple(tnt->io_buf, tuple))
+	if (!io_buf_write_tuple(tnt->io_buf, &tuple))
 		return;
 
 	/* send iproto request */
@@ -722,7 +732,7 @@ PHP_METHOD(tarantool_class, insert)
 		}
 
 		/* put returned tuple to result array */
-		add_assoc_zval(return_value, "tuple", tuple);
+		add_assoc_zval(return_value, "tuple", &tuple);
 	}
 }
 
@@ -736,12 +746,12 @@ PHP_METHOD(tarantool_class, update_fields)
 	long flags = 0;
 	zval *tuple = NULL;
 	zval *op_list = NULL;
+
 	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Olza|l", &id, tarantool_ce, &space_no, &tuple, &op_list, &flags) == FAILURE) {
 		return;
 	}
 
-	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
-		id TSRMLS_CC);
+	tarantool_object *tnt = Z_TARANTOOL_OBJ(getThis());
 
 	/*
 	 * send request
@@ -771,19 +781,17 @@ PHP_METHOD(tarantool_class, update_fields)
 	if (!io_buf_write_int32(tnt->io_buf, op_count))
 		return;
 
-	HashPosition itr;
-	zval **op;
-	for (zend_hash_internal_pointer_reset_ex(op_list_array, &itr);
-		 zend_hash_get_current_data_ex(op_list_array, (void **) &op, &itr) == SUCCESS;
-		 zend_hash_move_forward_ex(op_list_array, &itr)) {
+	zval *op;
+	ZEND_HASH_FOREACH_VAL_IND(op_list_array, op) {
+
 		/* check operation type */
-		if (Z_TYPE_PP(op) != IS_ARRAY) {
+		if (Z_TYPE_P(op) != IS_ARRAY) {
 			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"invalid operations list");
 			return;
 		}
 
-		HashTable *op_array = Z_ARRVAL_PP(op);
+		HashTable *op_array = Z_ARRVAL_P(op);
 		long field_no;
 		long opcode;
 
@@ -807,7 +815,7 @@ PHP_METHOD(tarantool_class, update_fields)
 		if (!io_buf_write_byte(tnt->io_buf, opcode))
 			return;
 
-		zval **assing_arg = NULL;
+		zval *assing_arg;
 		long arith_arg;
 		long splice_offset;
 		long splice_length;
@@ -815,19 +823,22 @@ PHP_METHOD(tarantool_class, update_fields)
 		int splice_list_len;
 		switch (opcode) {
 		case TARANTOOL_OP_ASSIGN:
-			if (!hash_find_scalar(op_array, "arg", &assing_arg)) {
+			if (!hash_find_scalar(op_array, "arg", assing_arg)) {
 				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 										"can't find 'arg' in the update field operation");
 				return;
 			}
-			if (Z_TYPE_PP(assing_arg) == IS_LONG) {
+			if (Z_TYPE_P(assing_arg) == IS_LONG) {
 				/* write as interger */
-				if (!io_buf_write_field_str(tnt->io_buf, (uint8_t *) &Z_LVAL_PP(assing_arg), sizeof(int32_t)))
+				if (!io_buf_write_field_str(tnt->io_buf, (uint8_t *) &Z_LVAL_P(assing_arg), sizeof(int32_t)))
 					return;
 			} else {
 				/* write as string */
-				if (!io_buf_write_field_str(tnt->io_buf, (uint8_t *) Z_STRVAL_PP(assing_arg), Z_STRLEN_PP(assing_arg)))
+				zend_string *str = zval_get_string(assing_arg);
+				if (!io_buf_write_field_str(tnt->io_buf, (uint8_t *) str->val, str->len))
+					zend_string_release(str);
 					return;
+				zend_string_release(str);
 			}
 			break;
 		case TARANTOOL_OP_ADD:
@@ -892,7 +903,7 @@ PHP_METHOD(tarantool_class, update_fields)
 									"invalid operaion code %i", opcode);
 			return;
 		}
-	}
+	} ZEND_HASH_FOREACH_END();
 
 	/* send iproto request */
 	if (!io_buf_send_iproto(tnt->stream, TARANTOOL_COMMAND_UPDATE, 0, tnt->io_buf))
@@ -946,7 +957,7 @@ PHP_METHOD(tarantool_class, update_fields)
 	/* check "return tuple" flag */
 	if ((response->count > 0) && (flags & TARANTOOL_FLAGS_RETURN_TUPLE)) {
 		/* ok, the responce should contain inserted tuple */
-		if (!io_buf_read_tuple(tnt->io_buf, &tuple)) {
+		if (!io_buf_read_tuple(tnt->io_buf, tuple)) {
 			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"update fields failed: invalid response was received");
 			return;
@@ -966,12 +977,12 @@ PHP_METHOD(tarantool_class, delete)
 	long space_no = 0;
 	long flags = 0;
 	zval *tuple = NULL;
+
 	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Olz|l", &id, tarantool_ce, &space_no, &tuple, &flags) == FAILURE) {
 		return;
 	}
 
-	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
-		id TSRMLS_CC);
+	tarantool_object *tnt = Z_TARANTOOL_OBJ(getThis());
 
 	/*
 	 * send request
@@ -1046,7 +1057,7 @@ PHP_METHOD(tarantool_class, delete)
 	/* check "return tuple" flag */
 	if ((response->count) > 0 && (flags & TARANTOOL_FLAGS_RETURN_TUPLE)) {
 		/* ok, the responce should contain inserted tuple */
-		if (!io_buf_read_tuple(tnt->io_buf, &tuple)) {
+		if (!io_buf_read_tuple(tnt->io_buf, tuple)) {
 			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"delete failed: invalid response was received");
 			return;
@@ -1064,15 +1075,15 @@ PHP_METHOD(tarantool_class, call)
 	 */
 	zval *id;
 	char *proc_name = NULL;
-	int proc_name_len = 0;
+	size_t proc_name_len = 0;
 	zval *tuple = NULL;
 	long flags = 0;
+
 	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Osz|l", &id, tarantool_ce, &proc_name, &proc_name_len, &tuple, &flags) == FAILURE) {
 		return;
 	}
 
-	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
-		id TSRMLS_CC);
+	tarantool_object *tnt = Z_TARANTOOL_OBJ(getThis());
 
 	/*
 	 * send request
@@ -1143,9 +1154,8 @@ PHP_METHOD(tarantool_class, call)
 	add_assoc_long(return_value, "count", response->count);
 
 	/* put tuple list to result array */
-	zval *tuples_list;
-	MAKE_STD_ZVAL(tuples_list);
-	if (array_init(tuples_list) == FAILURE) {
+	zval tuples_list;
+	if (array_init(&tuples_list) == FAILURE) {
 		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 								"call failed: create array failed");
 		return;
@@ -1154,16 +1164,16 @@ PHP_METHOD(tarantool_class, call)
 	/* read tuples for responce */
 	int i;
 	for (i = 0; i < response->count; ++i) {
-		zval *tuple;
+		zval tuple;
 		if (!io_buf_read_tuple(tnt->io_buf, &tuple)) {
 			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"call failed: invalid response was received");
 			return;
 		}
-		add_next_index_zval(tuples_list, tuple);
+		add_next_index_zval(&tuples_list, &tuple);
 	}
 
-	add_assoc_zval(return_value, "tuples_list", tuples_list);
+	add_assoc_zval(return_value, "tuples_list", &tuples_list);
 }
 
 PHP_METHOD(tarantool_class, admin)
@@ -1171,13 +1181,13 @@ PHP_METHOD(tarantool_class, admin)
 	/* parse methods parameters */
 	zval *id;
 	char *cmd = NULL;
-	int cmd_len = 0;
+	size_t cmd_len = 0;
+
 	if (zend_parse_method_parameters(ZEND_NUM_ARGS() TSRMLS_CC, getThis(), "Os", &id, tarantool_ce, &cmd, &cmd_len) == FAILURE) {
 		return;
 	}
 
-	tarantool_object *tnt = (tarantool_object *) zend_object_store_get_object(
-		id TSRMLS_CC);
+	tarantool_object *tnt = Z_TARANTOOL_OBJ(getThis());
 
 	/* check admin port */
 	if (!tnt->admin_port) {
@@ -1188,13 +1198,17 @@ PHP_METHOD(tarantool_class, admin)
 
 	/* check connection */
 	if (!tnt->admin_stream) {
+		zend_string *eol;
+
 		/* establis connection */
 		tnt->admin_stream = establish_connection(tnt->host, tnt->admin_port);
 		if (!tnt->admin_stream)
 			return;
 
+		eol = zend_string_init(ADMIN_SEPARATOR, strlen(ADMIN_SEPARATOR), 0);
 		/* set string eol */
-		php_stream_locate_eol(tnt->admin_stream, ADMIN_SEPARATOR, strlen(ADMIN_SEPARATOR) TSRMLS_DC);
+		php_stream_locate_eol(tnt->admin_stream, eol TSRMLS_DC);
+		zend_string_release(eol);
 	}
 
 	/* send request */
@@ -1211,7 +1225,7 @@ PHP_METHOD(tarantool_class, admin)
 	if (!io_buf_recv_yaml(tnt->admin_stream, tnt->io_buf))
 		return;
 
-	RETURN_STRINGL((char *)tnt->io_buf->value, tnt->io_buf->size, 1);
+	RETURN_STRINGL((char *)tnt->io_buf->value, tnt->io_buf->size);
 }
 
 
@@ -1441,17 +1455,16 @@ io_buf_read_field(struct io_buf *buf, zval *tuple)
 	default:
 		if (!io_buf_read_str(buf, &str_val, field_length))
 			return false;
-		add_next_index_stringl(tuple, str_val, field_length, true);
+		add_next_index_stringl(tuple, str_val, field_length);
 	}
 
 	return true;
 }
 
 static bool
-io_buf_read_tuple(struct io_buf *buf, zval **tuple)
+io_buf_read_tuple(struct io_buf *buf, zval *tuple)
 {
-	MAKE_STD_ZVAL(*tuple);
-	if (array_init(*tuple) == FAILURE) {
+	if (array_init(tuple) == FAILURE) {
 		return false;
 	}
 
@@ -1464,7 +1477,7 @@ io_buf_read_tuple(struct io_buf *buf, zval **tuple)
 		return false;
 
 	while (cardinality > 0) {
-		if (!io_buf_read_field(buf, *tuple))
+		if (!io_buf_read_field(buf, tuple))
 			return false;
 		cardinality -= 1;
 	}
@@ -1623,27 +1636,25 @@ io_buf_write_tuple_array(struct io_buf *buf, zval *tuple)
 {
 	/* multyply tuple array */
 	HashTable *hash = Z_ARRVAL_P(tuple);
-	HashPosition itr;
-	zval **field;
+	zval *field;
 	/* put tuple cardinality */
 	io_buf_write_int32(buf, zend_hash_num_elements(hash));
-	for (zend_hash_internal_pointer_reset_ex(hash, &itr);
-		 zend_hash_get_current_data_ex(hash, (void **) &field, &itr) == SUCCESS;
-		 zend_hash_move_forward_ex(hash, &itr)) {
+
+	ZEND_HASH_FOREACH_VAL(hash, field) {
 		char *str_value;
 		size_t str_length;
 		long long_value;
 
-		switch (Z_TYPE_PP(field)) {
+		switch (Z_TYPE_P(field)) {
 		case IS_STRING:
 			/* string field */
-			str_value = Z_STRVAL_PP(field);
-			str_length = Z_STRLEN_PP(field);
+			str_value = Z_STRVAL_P(field);
+			str_length = Z_STRLEN_P(field);
 			io_buf_write_field_str(buf, str_value, str_length);
 			break;
 		case IS_LONG:
 			/* integer field */
-			long_value = Z_LVAL_PP(field);
+			long_value = Z_LVAL_P(field);
 			/* write field */
 			if ((unsigned long)long_value <= 0xffffffffllu) {
 				io_buf_write_field_int32(buf, (uint32_t)long_value);
@@ -1656,7 +1667,7 @@ io_buf_write_tuple_array(struct io_buf *buf, zval *tuple)
 									"unsupported field type");
 			return false;
 		}
-	}
+	} ZEND_HASH_FOREACH_END();
 
 	return true;
 }
@@ -1688,26 +1699,23 @@ static bool
 io_buf_write_tuples_list_array(struct io_buf *buf, zval *tuples_list)
 {
 	HashTable *hash = Z_ARRVAL_P(tuples_list);
-	HashPosition itr;
-	zval **tuple;
+	zval *tuple;
 
 	/* write number of tuples */
 	if (!io_buf_write_int32(buf, zend_hash_num_elements(hash)))
 		return false;
 
 	/* write tuples */
-	for (zend_hash_internal_pointer_reset_ex(hash, &itr);
-		 zend_hash_get_current_data_ex(hash, (void **) &tuple, &itr) == SUCCESS;
-		 zend_hash_move_forward_ex(hash, &itr)) {
-		if (Z_TYPE_PP(tuple) != IS_ARRAY) {
+	ZEND_HASH_FOREACH_VAL(hash, tuple) {
+		if (Z_TYPE_P(tuple) != IS_ARRAY) {
 			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 									"invalid tuples list: expected array of array");
 			return false;
 		}
 
-		if (!io_buf_write_tuple_array(buf, *tuple))
+		if (!io_buf_write_tuple_array(buf, tuple))
 			return false;
-	}
+	} ZEND_HASH_FOREACH_END();
 
 	return true;
 }
@@ -1717,8 +1725,7 @@ static bool
 io_buf_write_tuples_list(struct io_buf *buf, zval *tuples_list)
 {
 	HashTable *hash;
-	HashPosition itr;
-	zval **tuple;
+	zval *tuple;
 
 	switch (Z_TYPE_P(tuples_list)) {
 	case IS_LONG:
@@ -1742,14 +1749,15 @@ io_buf_write_tuples_list(struct io_buf *buf, zval *tuples_list)
 	case IS_ARRAY:
 		/* array: migth be single or multi tuples array */
 		hash = Z_ARRVAL_P(tuples_list);
-		zend_hash_internal_pointer_reset_ex(hash, &itr);
-		if (zend_hash_get_current_data_ex(hash, (void **) &tuple, &itr) != SUCCESS) {
+		zend_hash_internal_pointer_reset(hash);
+		tuple = zend_hash_get_current_data(hash);
+		if (!tuple) {
 			zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, "invalid tuples list: empty array");
 			return false;
 		}
 
 		/* check type of the first element */
-		switch (Z_TYPE_PP(tuple)) {
+		switch (Z_TYPE_P(tuple)) {
 		case IS_STRING:
 		case IS_LONG:
 			/* single tuple: array */
@@ -1894,40 +1902,24 @@ io_buf_recv_iproto(php_stream *stream, struct io_buf *buf)
  * support local functions
  *----------------------------------------------------------------------------*/
 
-static zend_object_value
+static zend_object *
 alloc_tarantool_object(zend_class_entry *entry TSRMLS_DC)
 {
-	zend_object_value new_value;
-
 	/* allocate and clean-up instance */
-	tarantool_object *tnt = (tarantool_object *) emalloc(sizeof(tarantool_object));
-	/* TODO: emalloc result must be checked */
-	memset(tnt, 0, sizeof(tarantool_object));
+	tarantool_object *tnt = (tarantool_object *) ecalloc(1, sizeof(tarantool_object));
 
 	/* initialize class instance */
 	zend_object_std_init(&tnt->zo, entry TSRMLS_CC);
-#if PHP_VERSION_ID < 50399
-	{
-		zval *tmp;
-		zend_hash_copy(tnt->zo.properties, &entry->default_properties, (copy_ctor_func_t) zval_add_ref, (void *) &tmp, sizeof(zval *));
-	}
-#else
 	object_properties_init(&tnt->zo, entry);
-#endif
-	new_value.handle = zend_objects_store_put(
-		tnt,
-		(zend_objects_store_dtor_t) zend_objects_destroy_object,
-		(zend_objects_free_object_storage_t) free_tarantool_object,
-		NULL TSRMLS_CC);
-	new_value.handlers = zend_get_std_object_handlers();
-	return new_value;
+	tnt->zo.handlers = &tarantool_obj_handlers;
+
+	return &tnt->zo;
 }
 
 static void
-free_tarantool_object(tarantool_object *tnt TSRMLS_DC)
+free_tarantool_object(zend_object *obj TSRMLS_DC)
 {
-	if (tnt == NULL)
-		return;
+	tarantool_object *tnt = php_tarantool_object(obj);
 
 	zend_object_std_dtor(&tnt->zo TSRMLS_CC);
 
@@ -1943,7 +1935,6 @@ free_tarantool_object(tarantool_object *tnt TSRMLS_DC)
 
 	io_buf_destroy(tnt->io_buf);
 	io_buf_destroy(tnt->splice_field);
-	efree(tnt);
 }
 
 static php_stream *
@@ -1952,13 +1943,13 @@ establish_connection(char *host, int port)
 	/* initialize connection parameters */
 	char *dest_addr = NULL;
 	size_t dest_addr_len = spprintf(&dest_addr, 0, "tcp://%s:%d", host, port);
-	int options = ENFORCE_SAFE_MODE | REPORT_ERRORS;
+	int options = REPORT_ERRORS;
 	int flags = STREAM_XPORT_CLIENT | STREAM_XPORT_CONNECT;
 	struct timeval timeout = {
 		.tv_sec = TARANTOOL_TIMEOUT_SEC,
 		.tv_usec = TARANTOOL_TIMEOUT_USEC,
 	};
-	char *error_msg = NULL;
+	zend_string *error_msg = NULL;
 	int error_code = 0;
 
 	/* establish connection */
@@ -1968,7 +1959,7 @@ establish_connection(char *host, int port)
 	/* check result */
 	if (!stream) {
 		if (error_code || error_msg) {
-			zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to connect to '%s:%d': %s", host, port, error_msg);
+			zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to connect to '%s:%d': %s", host, port, ZSTR_VAL(error_msg));
 			goto process_error;
 		} else {
 			zend_throw_exception_ex(t_io_exception_ce, 0 TSRMLS_CC, "failed to connect to '%s:%d'", host, port);
@@ -1992,7 +1983,7 @@ establish_connection(char *host, int port)
 process_error:
 
 	if (error_msg)
-		efree(error_msg);
+		zend_string_release(error_msg);
 
 	if (stream)
 		php_stream_close(stream);
@@ -2002,33 +1993,38 @@ process_error:
 
 static bool hash_find_long_ex(HashTable *hash, char *key, int key_len, long *value)
 {
-	zval **zvalue = NULL;
-	if (zend_hash_find(hash, key, key_len + 1, (void **)&zvalue) != SUCCESS)
+	zval *zvalue;
+	zvalue = zend_hash_str_find(hash, key, key_len);
+	if (!zvalue)
 		return false;
-	if (Z_TYPE_PP(zvalue) != IS_LONG)
+	if (Z_TYPE_P(zvalue) != IS_LONG)
 		return false;
-	*value = Z_LVAL_PP(zvalue);
+	*value = Z_LVAL_P(zvalue);
 	return true;
 }
 
 static bool hash_find_str_ex(HashTable *hash, char *key, int key_len, char **value, int *value_length)
 {
-	zval **zvalue = NULL;
-	if (zend_hash_find(hash, key, key_len + 1, (void **)&zvalue) != SUCCESS)
+	zval *zvalue;
+	zvalue = zend_hash_str_find(hash, key, key_len);
+	if (!zvalue)
 		return false;
-	if (Z_TYPE_PP(zvalue) != IS_STRING)
+	if (Z_TYPE_P(zvalue) != IS_STRING)
 		return false;
-	*value = Z_STRVAL_PP(zvalue);
-	*value_length = Z_STRLEN_PP(zvalue);
+	*value = Z_STRVAL_P(zvalue);
+	*value_length = Z_STRLEN_P(zvalue);
 	return true;
 }
 
-static bool hash_find_scalar_ex(HashTable *hash, char *key, int key_len, zval ***value)
+static bool hash_find_scalar_ex(HashTable *hash, char *key, int key_len, zval **value)
 {
-	if (zend_hash_find(hash, key, key_len + 1, (void **)value) != SUCCESS)
+	zval *zv;
+
+	zv = zend_hash_str_find(hash, key, key_len);
+	if (!zv || (Z_TYPE_P(zv) != IS_STRING && Z_TYPE_P(zv) != IS_LONG))
 		return false;
-	if (Z_TYPE_PP(*value) != IS_STRING && Z_TYPE_PP(*value) != IS_LONG)
-		return false;
+
+	*value = zv;
 	return true;
 }
 
