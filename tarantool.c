@@ -823,7 +823,7 @@ PHP_METHOD(tarantool_class, update_fields)
 		int splice_list_len;
 		switch (opcode) {
 		case TARANTOOL_OP_ASSIGN:
-			if (!hash_find_scalar(op_array, "arg", assing_arg)) {
+			if (!hash_find_scalar(op_array, "arg", &assing_arg)) {
 				zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
 										"can't find 'arg' in the update field operation");
 				return;
