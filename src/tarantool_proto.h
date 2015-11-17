@@ -96,12 +96,13 @@ void php_tp_encode_select(smart_string *str,
 void php_tp_encode_insert_or_replace(smart_string *str, uint32_t sync,
 		uint32_t space_no, zval *tuple,
 		uint32_t type);
-void php_tp_encode_delete(smart_string *str, uint32_t sync,
-		uint32_t space_no, zval *tuple);
-void php_tp_encode_call(smart_string *str, uint32_t sync,
+void php_tp_encode_delete(smart_str *str, uint32_t sync,
+		uint32_t space_no, uint32_t index_no, zval *tuple);
+void php_tp_encode_call(smart_str *str, uint32_t sync,
 		char *proc, uint32_t proc_len, zval *tuple);
 void php_tp_encode_eval(smart_string *str, uint32_t sync,
 		char *proc, uint32_t proc_len, zval *tuple);
-void php_tp_encode_update(smart_string *str, uint32_t sync,
-		uint32_t space_no, zval *key, zval *args);
+void php_tp_encode_update(smart_str *str, uint32_t sync,
+		uint32_t space_no, uint32_t index_no,
+		zval *key, zval *args);
 #endif /* PHP_TP_H */
