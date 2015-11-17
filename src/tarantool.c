@@ -747,7 +747,7 @@ PHP_MINFO_FUNCTION(tarantool) {
 }
 
 PHP_METHOD(tarantool_class, __construct) {
-	char *host = NULL; int host_len = 0;
+	char *host = NULL; size_t host_len = 0;
 	long port = 0;
 
 	TARANTOOL_PARSE_PARAMS(id, "|sl", &host, &host_len, &port);
@@ -865,8 +865,8 @@ int __tarantool_authenticate(tarantool_object *obj) {
 }
 
 PHP_METHOD(tarantool_class, authenticate) {
-	char *login; int login_len;
-	char *passwd; int passwd_len;
+	char *login; size_t login_len;
+	char *passwd; size_t passwd_len;
 
 	TARANTOOL_PARSE_PARAMS(id, "ss", &login, &login_len,
 			&passwd, &passwd_len);
