@@ -151,7 +151,7 @@ size_t php_tp_sizeof_delete(uint32_t sync,
 		php_mp_sizeof(tuple)                   ;
 }
 
-void php_tp_encode_delete(smart_str *str, uint32_t sync,
+void php_tp_encode_delete(smart_string *str, uint32_t sync,
 			  uint32_t space_no, uint32_t index_no,
 			  zval *tuple) {
 	size_t packet_size = php_tp_sizeof_delete(sync,
@@ -228,7 +228,7 @@ size_t php_tp_sizeof_update(uint32_t sync,
 		php_mp_sizeof(args);
 }
 
-void php_tp_encode_update(smart_str *str, uint32_t sync,
+void php_tp_encode_update(smart_string *str, uint32_t sync,
 			  uint32_t space_no, uint32_t index_no,
 			  zval *key, zval *args) {
 	size_t packet_size = php_tp_sizeof_update(sync,

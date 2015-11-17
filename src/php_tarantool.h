@@ -2,6 +2,7 @@
 #define    PHP_TARANTOOL_H
 
 #include "php.h"
+#include "zend_exceptions.h"
 
 extern zend_module_entry tarantool_module_entry;
 #define phpext_tarantool_ptr &tarantool_module_entry
@@ -68,7 +69,6 @@ ZEND_END_MODULE_GLOBALS(tarantool)
 ZEND_EXTERN_MODULE_GLOBALS(tarantool)
 
 typedef struct tarantool_object {
-	zend_object              zo;
 	char                    *host;
 	int                      port;
 	char                    *login;
@@ -81,6 +81,7 @@ typedef struct tarantool_object {
 	char                    *greeting;
 	char                    *salt;
 	struct tarantool_schema *schema;
+	zend_object              zo;
 } tarantool_object;
 
 #ifdef ZTS
