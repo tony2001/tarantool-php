@@ -1906,7 +1906,7 @@ static zend_object *
 alloc_tarantool_object(zend_class_entry *entry TSRMLS_DC)
 {
 	/* allocate and clean-up instance */
-	tarantool_object *tnt = (tarantool_object *) ecalloc(1, sizeof(tarantool_object));
+	tarantool_object *tnt = (tarantool_object *) ecalloc(1, sizeof(tarantool_object) + zend_object_properties_size(entry));
 
 	/* initialize class instance */
 	zend_object_std_init(&tnt->zo, entry TSRMLS_CC);
