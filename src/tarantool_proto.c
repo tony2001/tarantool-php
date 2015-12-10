@@ -156,7 +156,7 @@ void php_tp_encode_delete(smart_string *str, uint32_t sync,
 			  zval *tuple) {
 	size_t packet_size = php_tp_sizeof_delete(sync,
 			space_no, index_no, tuple);
-	smart_str_ensure(str, packet_size + 5);
+	smart_string_ensure(str, packet_size + 5);
 	php_tp_pack_header(str, packet_size, TNT_DELETE, sync);
 	php_mp_pack_hash(str, 3);
 	php_mp_pack_long(str, TNT_SPACE);
@@ -233,7 +233,7 @@ void php_tp_encode_update(smart_string *str, uint32_t sync,
 			  zval *key, zval *args) {
 	size_t packet_size = php_tp_sizeof_update(sync,
 			space_no, index_no, key, args);
-	smart_str_ensure(str, packet_size + 5);
+	smart_string_ensure(str, packet_size + 5);
 	php_tp_pack_header(str, packet_size, TNT_UPDATE, sync);
 	php_mp_pack_hash(str, 4);
 	php_mp_pack_long(str, TNT_SPACE);

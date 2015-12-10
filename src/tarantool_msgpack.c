@@ -125,15 +125,14 @@ void php_mp_pack_array_recursively(smart_string *str, zval *val) {
 	for (; key_index < n; ++key_index) {
 		data = zend_hash_index_find(ht, key_index);
 		if (!data || data == val ||
-				(Z_TYPE_P(data) == IS_ARRAY && \
-				 Z_ARRVAL_P(data)->nApplyCount > 1)) {
+				(Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)) && Z_ARRVAL_P(data)->u.v.nApplyCount > 1)) {
 			php_mp_pack_nil(str);
 		} else {
-			if (Z_TYPE_P(data) == IS_ARRAY)
-				Z_ARRVAL_P(data)->nApplyCount++;
+			if (Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)))
+				Z_ARRVAL_P(data)->u.v.nApplyCount++;
 			php_mp_pack(str, data);
-			if (Z_TYPE_P(data) == IS_ARRAY)
-				Z_ARRVAL_P(data)->nApplyCount--;
+			if (Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)))
+				Z_ARRVAL_P(data)->u.v.nApplyCount--;
 		}
 	}
 }
@@ -142,8 +141,7 @@ void php_mp_pack_hash_recursively(smart_string *str, zval *val) {
 	HashTable *ht = Z_ARRVAL_P(val);
 	size_t n = zend_hash_num_elements(ht);
 
-	char *key;
-	uint key_len;
+	zend_string *key;
 	int key_type;
 	ulong key_index;
 	zval *data;
@@ -152,8 +150,7 @@ void php_mp_pack_hash_recursively(smart_string *str, zval *val) {
 	php_mp_pack_hash(str, n);
 	zend_hash_internal_pointer_reset_ex(ht, &pos);
 	for (;; zend_hash_move_forward_ex(ht, &pos)) {
-		key_type = zend_hash_get_current_key_ex(
-			ht, &key, &key_len, &key_index, 0, &pos);
+		key_type = zend_hash_get_current_key_ex(ht, &key, &key_index, &pos);
 		if (key_type == HASH_KEY_NON_EXISTENT)
 			break;
 		switch (key_type) {
@@ -161,7 +158,7 @@ void php_mp_pack_hash_recursively(smart_string *str, zval *val) {
 			php_mp_pack_long(str, key_index);
 			break;
 		case HASH_KEY_IS_STRING:
-			php_mp_pack_string(str, key, key_len -1);
+			php_mp_pack_string(str, key->val, key->len);
 			break;
 		default:
 			/* TODO: THROW EXCEPTION */
@@ -170,15 +167,14 @@ void php_mp_pack_hash_recursively(smart_string *str, zval *val) {
 		}
 		data = zend_hash_get_current_data_ex(ht, &pos);
 		if (!data || data == val ||
-				(Z_TYPE_P(data) == IS_ARRAY &&
-				 Z_ARRVAL_P(data)->nApplyCount > 1)) {
+				(Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)) && Z_ARRVAL_P(data)->u.v.nApplyCount > 1)) {
 			php_mp_pack_nil(str);
 		} else {
-			if (Z_TYPE_P(data) == IS_ARRAY)
-				Z_ARRVAL_P(data)->nApplyCount++;
+			if (Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)))
+				Z_ARRVAL_P(data)->u.v.nApplyCount++;
 			php_mp_pack(str, data);
-			if (Z_TYPE_P(data) == IS_ARRAY)
-				Z_ARRVAL_P(data)->nApplyCount--;
+			if (Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)))
+				Z_ARRVAL_P(data)->u.v.nApplyCount--;
 		}
 	}
 }
@@ -315,39 +311,36 @@ ptrdiff_t php_mp_unpack_map(zval *oval, char **str) {
 	size_t len = mp_decode_map((const char **)str);
 	array_init_size(oval, len);
 	while (len-- > 0) {
-		zval *key = NULL;
-		zval *value = NULL;
-		if (php_mp_unpack(key, str) == FAILURE) {
-			key = NULL;
+		zval key;
+		zval value;
+		if (php_mp_unpack(&key, str) == FAILURE) {
 			goto error;
 		}
-		if (php_mp_unpack(value, str) == FAILURE) {
-			value = NULL;
+		if (php_mp_unpack(&value, str) == FAILURE) {
 			goto error;
 		}
-		switch (Z_TYPE_P(key)) {
+		switch (Z_TYPE(key)) {
 		case IS_LONG:
-			add_index_zval(oval, Z_LVAL_P(key), value);
+			add_index_zval(oval, Z_LVAL(key), &value);
 			break;
 		case IS_STRING:
-			add_assoc_zval_ex(oval, Z_STRVAL_P(key),
-					Z_STRLEN_P(key) + 1, value);
+			add_assoc_zval_ex(oval, Z_STRVAL(key), Z_STRLEN(key), &value);
 			break;
 		case IS_DOUBLE:
 			/* convert to INT/STRING for future uses */
 			/* FALLTHROUGH */
 		default:
 			THROW_EXC("Can't create Array - key value"
-				" not of type %s", op_to_string(Z_TYPE_P(key)));
+				" not of type %s", op_to_string(Z_TYPE(key)));
 			goto error;
 			break;
 		}
-		zval_ptr_dtor(key);
+		zval_ptr_dtor(&key);
 		continue;
 error:
-		if (key) zval_ptr_dtor(key);
-		if (value) zval_ptr_dtor(value);
-		if (oval) zval_ptr_dtor(oval);
+		zval_ptr_dtor(&key);
+		zval_ptr_dtor(&value);
+		zval_ptr_dtor(oval);
 		return FAILURE;
 	}
 	return SUCCESS;
@@ -357,12 +350,12 @@ ptrdiff_t php_mp_unpack_array(zval *oval, char **str) {
 	size_t len = mp_decode_array((const char **)str);
 	array_init_size(oval, len);
 	while (len-- > 0) {
-		zval *value = {0};
-		if (php_mp_unpack(value, str) == FAILURE) {
+		zval value;
+		if (php_mp_unpack(&value, str) == FAILURE) {
 			zval_ptr_dtor(oval);
 			return FAILURE;
 		}
-		add_next_index_zval(oval, value);
+		add_next_index_zval(oval, &value);
 	}
 	return SUCCESS;
 }
@@ -458,15 +451,14 @@ size_t php_mp_sizeof_array_recursively(zval *val) {
 	for (; key_index < n; ++key_index) {
 		data = zend_hash_index_find(ht, key_index);
 		if (!data || data == val ||
-				(Z_TYPE_P(data) == IS_ARRAY && \
-				 Z_ARRVAL_P(data)->nApplyCount > 1)) {
+				(Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)) && Z_ARRVAL_P(data)->u.v.nApplyCount > 1)) {
 			needed += php_mp_sizeof_nil();
 		} else {
-			if (Z_TYPE_P(data) == IS_ARRAY)
-				Z_ARRVAL_P(data)->nApplyCount++;
+			if (Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)))
+				Z_ARRVAL_P(data)->u.v.nApplyCount++;
 			needed += php_mp_sizeof(data);
-			if (Z_TYPE_P(data) == IS_ARRAY)
-				Z_ARRVAL_P(data)->nApplyCount--;
+			if (Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)))
+				Z_ARRVAL_P(data)->u.v.nApplyCount--;
 		}
 	}
 	return needed;
@@ -478,8 +470,7 @@ size_t php_mp_sizeof_hash_recursively(zval *val) {
 	size_t n = zend_hash_num_elements(ht);
 	size_t needed = php_mp_sizeof_hash(n);
 
-	char *key;
-	uint key_len;
+	zend_string *key;
 	int key_type;
 	ulong key_index;
 	zval *data;
@@ -487,8 +478,7 @@ size_t php_mp_sizeof_hash_recursively(zval *val) {
 
 	zend_hash_internal_pointer_reset_ex(ht, &pos);
 	for (;; zend_hash_move_forward_ex(ht, &pos)) {
-		key_type = zend_hash_get_current_key_ex(
-			ht, &key, &key_len, &key_index, 0, &pos);
+		key_type = zend_hash_get_current_key_ex(ht, &key, &key_index, &pos);
 		if (key_type == HASH_KEY_NON_EXISTENT)
 			break;
 		switch (key_type) {
@@ -496,7 +486,7 @@ size_t php_mp_sizeof_hash_recursively(zval *val) {
 			needed += php_mp_sizeof_long(key_index);
 			break;
 		case HASH_KEY_IS_STRING:
-			needed += php_mp_sizeof_string(key_len - 1);
+			needed += php_mp_sizeof_string(key->len);
 			break;
 		default:
 			/* TODO: THROW EXCEPTION */
@@ -505,16 +495,15 @@ size_t php_mp_sizeof_hash_recursively(zval *val) {
 		}
 		data = zend_hash_get_current_data_ex(ht, &pos);
 		if (!data || data == val ||
-				(Z_TYPE_P(data) == IS_ARRAY &&
-				 Z_ARRVAL_P(data)->nApplyCount > 1)) {
+				(Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)) && Z_ARRVAL_P(data)->u.v.nApplyCount > 1)) {
 			/* TODO: THROW EXCEPTION */
 			needed += php_mp_sizeof_nil();
 		} else {
-			if (Z_TYPE_P(data) == IS_ARRAY)
-				Z_ARRVAL_P(data)->nApplyCount++;
+			if (Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)))
+				Z_ARRVAL_P(data)->u.v.nApplyCount++;
 			needed += php_mp_sizeof(data);
-			if (Z_TYPE_P(data) == IS_ARRAY)
-				Z_ARRVAL_P(data)->nApplyCount--;
+			if (Z_TYPE_P(data) == IS_ARRAY && ZEND_HASH_APPLY_PROTECTION(Z_ARRVAL_P(data)))
+				Z_ARRVAL_P(data)->u.v.nApplyCount--;
 		}
 	}
 	return needed;
