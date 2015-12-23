@@ -163,7 +163,7 @@ static int tarantool_stream_open(tarantool_object *obj, int count) {
 error:
 	if (count)
 		php_error(E_NOTICE, "Connection failed. %d attempts left", count);
-	if (errstr) efree(errstr);
+	if (errstr) zend_string_release(errstr);
 	if (stream) php_stream_pclose(stream);
 	return FAILURE;
 }
