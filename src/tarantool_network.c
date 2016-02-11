@@ -81,7 +81,7 @@ int tntll_stream_open(const char *host, int port, const char *pid,
 	efree(addr);
 
 	if (errcode || !stream) {
-		spprintf(err, 0, "Failed to connect [%d]: %s", errcode,
+		spprintf(err, 0, "Failed to connect to %s:%d [%d]: %s", host, port, errcode,
 			 errstr);
 		goto error;
 	}

@@ -49,6 +49,7 @@ PHP_METHOD(tarantool_class, authenticate);
 PHP_METHOD(tarantool_class, ping);
 PHP_METHOD(tarantool_class, select);
 PHP_METHOD(tarantool_class, insert);
+PHP_METHOD(tarantool_class, getSync);
 PHP_METHOD(tarantool_class, replace);
 PHP_METHOD(tarantool_class, call);
 PHP_METHOD(tarantool_class, eval);
@@ -91,5 +92,8 @@ typedef struct tarantool_object {
 
 #define THROW_EXC(...) zend_throw_exception_ex(					\
 	zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC, __VA_ARGS__)
+
+#define THROW_IO_EXC(...) zend_throw_exception_ex(					\
+	tarantool_io_exception_ptr, 0 TSRMLS_CC, __VA_ARGS__)
 
 #endif  /* PHP_TARANTOOL_H */
