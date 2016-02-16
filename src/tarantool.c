@@ -86,7 +86,7 @@ zend_function_entry tarantool_module_functions[] = {
 
 zend_module_entry tarantool_module_entry = {
 	STANDARD_MODULE_HEADER,
-	"tarantool",
+	"tarantool16",
 	tarantool_module_functions,
 	PHP_MINIT(tarantool),
 	PHP_MSHUTDOWN(tarantool),
@@ -671,7 +671,7 @@ PHP_MINIT_FUNCTION(tarantool) {
 	TARANTOOL_G(persistent) = persistent;
 	TARANTOOL_G(manager) = pool_manager_create(persistent, INI_INT("tarantool.con_per_host"));
 	zend_class_entry ce;
-	INIT_CLASS_ENTRY(ce, "Tarantool", tarantool_class_methods);
+	INIT_CLASS_ENTRY(ce, "Tarantool16", tarantool_class_methods);
 	ce.create_object = tarantool_create;
 	tarantool_class_ptr = zend_register_internal_class(&ce TSRMLS_CC);
 	INIT_CLASS_ENTRY(ce, "Tarantool_IO_Exception", NULL);
