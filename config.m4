@@ -1,6 +1,6 @@
 dnl config.m4 for extension tarantool
-PHP_ARG_WITH(tarantool16, for tarantool support,
-[  --with-tarantool16	Enable tarantool support])
+PHP_ARG_ENABLE(tarantool16, for tarantool support,
+[  --enable-tarantool16	Enable tarantool support])
 
 if test "$PHP_TARANTOOL16" != "no"; then
     PHP_NEW_EXTENSION(tarantool16,        \
