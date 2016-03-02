@@ -79,7 +79,7 @@ zend_function_entry tarantool_module_functions[] = {
 
 zend_module_entry tarantool_module_entry = {
 	STANDARD_MODULE_HEADER,
-	"tarantool",
+	"tarantool16",
 	tarantool_module_functions,
 	PHP_MINIT(tarantool),
 	PHP_MSHUTDOWN(tarantool),
@@ -240,11 +240,12 @@ static zend_object *tarantool_create(zend_class_entry *entry) {
 	return &obj->zo;
 }
 
-static int64_t tarantool_step_recv(
+static int64_t tarantool_step_recv_ex(
 		tarantool_object *obj,
 		unsigned long sync,
 		zval *header,
-		zval *body) {
+		zval *body,
+		long *sync_recv) {
 	char pack_len[5] = {0, 0, 0, 0, 0};
 	if (tarantool_stream_read(obj, pack_len, 5) != 5) {
 		THROW_EXC("Can't read query from server");
@@ -285,11 +286,8 @@ static int64_t tarantool_step_recv(
 
 	val = zend_hash_index_find(hash, TNT_SYNC);
 	if (val) {
-		if (Z_LVAL_P(val) != sync) {
-			THROW_EXC("request sync is not equal response sync. "
-				  "closing connection");
-			tarantool_stream_close(obj);
-			goto error;
+		if (sync_recv != NULL) {
+				*sync_recv = Z_LVAL_P(val);
 		}
 	}
 	val = zend_hash_index_find(hash, TNT_CODE);
@@ -321,6 +319,17 @@ error:
 	return FAILURE;
 }
 
+static int64_t tarantool_step_recv(tarantool_object *obj, unsigned long sync, zval *header, zval *body)
+{
+	return tarantool_step_recv_ex(obj, sync, header, body, NULL);
+}
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_call, 0, 0, 1)
+	ZEND_ARG_INFO(0, proc)
+	ZEND_ARG_INFO(0, tuple)
+	ZEND_ARG_INFO(1, sync)
+ZEND_END_ARG_INFO()
+
 
 const zend_function_entry tarantool_class_methods[] = {
 	PHP_ME(tarantool_class, __construct, NULL, ZEND_ACC_PUBLIC)
@@ -332,7 +341,7 @@ const zend_function_entry tarantool_class_methods[] = {
 	PHP_ME(tarantool_class, select, NULL, ZEND_ACC_PUBLIC)
 	PHP_ME(tarantool_class, insert, NULL, ZEND_ACC_PUBLIC)
 	PHP_ME(tarantool_class, replace, NULL, ZEND_ACC_PUBLIC)
-	PHP_ME(tarantool_class, call, NULL, ZEND_ACC_PUBLIC)
+	PHP_ME(tarantool_class, call, arginfo_call, ZEND_ACC_PUBLIC)
 	PHP_ME(tarantool_class, eval, NULL, ZEND_ACC_PUBLIC)
 	PHP_ME(tarantool_class, delete, NULL, ZEND_ACC_PUBLIC)
 	PHP_ME(tarantool_class, update, NULL, ZEND_ACC_PUBLIC)
@@ -340,6 +349,7 @@ const zend_function_entry tarantool_class_methods[] = {
 	PHP_MALIAS(tarantool_class, evaluate, eval, NULL, ZEND_ACC_PUBLIC)
 	PHP_MALIAS(tarantool_class, flushSchema, flush_schema, NULL, ZEND_ACC_PUBLIC)
 	PHP_MALIAS(tarantool_class, disconnect, close, NULL, ZEND_ACC_PUBLIC)
+	PHP_ME(tarantool_class, getSync, NULL, ZEND_ACC_PUBLIC)
 	{NULL, NULL, NULL}
 };
 
@@ -655,7 +665,7 @@ PHP_MINIT_FUNCTION(tarantool) {
 
 	/* Init class entries */
 	zend_class_entry tarantool_class;
-	INIT_CLASS_ENTRY(tarantool_class, "Tarantool", tarantool_class_methods);
+	INIT_CLASS_ENTRY(tarantool_class, "Tarantool16", tarantool_class_methods);
 	tarantool_class.create_object = tarantool_create;
 	tarantool_class_ptr = zend_register_internal_class(&tarantool_class);
 	memcpy(&tarantool_obj_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
@@ -980,9 +990,9 @@ PHP_METHOD(tarantool_class, delete) {
 
 PHP_METHOD(tarantool_class, call) {
 	char *proc; size_t proc_len;
-	zval *tuple = NULL, tuple_new;
+	zval *tuple = NULL, tuple_new, *zsync = NULL;
 
-	TARANTOOL_PARSE_PARAMS(id, "s|z", &proc, &proc_len, &tuple);
+	TARANTOOL_PARSE_PARAMS(id, "s|zz/", &proc, &proc_len, &tuple, &zsync);
 	TARANTOOL_FETCH_OBJECT(obj);
 	TARANTOOL_CONNECT_ON_DEMAND(obj, id);
 
@@ -995,8 +1005,15 @@ PHP_METHOD(tarantool_class, call) {
 		RETURN_FALSE;
 
 	zval header, body;
-	if (tarantool_step_recv(obj, sync, &header, &body) == FAILURE)
-		RETURN_FALSE;
+	if (zsync) {
+		zval_dtor(zsync);
+		ZVAL_LONG(zsync, 0);
+		if (tarantool_step_recv_ex(obj, sync, &header, &body, &Z_LVAL_P(zsync)) == FAILURE)
+			RETURN_FALSE;
+	} else {
+		if (tarantool_step_recv(obj, sync, &header, &body) == FAILURE)
+			RETURN_FALSE;
+	}
 
 	TARANTOOL_RETURN_DATA(&body, &header, &body);
 }
@@ -1082,3 +1099,9 @@ PHP_METHOD(tarantool_class, upsert) {
 
 	TARANTOOL_RETURN_DATA(&body, &header, &body);
 }
+
+PHP_METHOD(tarantool_class, getSync)
+{
+	RETURN_LONG(TARANTOOL_G(sync_counter));
+}
+

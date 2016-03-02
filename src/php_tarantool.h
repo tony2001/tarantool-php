@@ -16,7 +16,7 @@ extern zend_module_entry tarantool_module_entry;
 #define phpext_tarantool_ptr &tarantool_module_entry
 
 #define PHP_TARANTOOL_VERSION "0.1.0"
-#define PHP_TARANTOOL_EXTNAME "tarantool"
+#define PHP_TARANTOOL_EXTNAME "tarantool16"
 
 #ifdef PHP_WIN32
 #  define PHP_TARANTOOL_API __declspec(__dllexport)
@@ -65,6 +65,7 @@ PHP_METHOD(tarantool_class, delete);
 PHP_METHOD(tarantool_class, update);
 PHP_METHOD(tarantool_class, upsert);
 PHP_METHOD(tarantool_class, flush_schema);
+PHP_METHOD(tarantool_class, getSync);
 
 ZEND_BEGIN_MODULE_GLOBALS(tarantool)
 	long sync_counter;
