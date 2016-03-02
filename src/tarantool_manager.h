@@ -4,7 +4,7 @@
 #include <php.h>
 #include <php_network.h>
 #include <zend_API.h>
-#include <ext/standard/php_smart_str.h>
+#include <ext/standard/php_smart_string.h>
 
 #include <sys/queue.h>
 

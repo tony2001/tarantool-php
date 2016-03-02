@@ -9,7 +9,7 @@
 #include <zend_exceptions.h>
 
 #include <ext/standard/info.h>
-#include <ext/standard/php_smart_str.h>
+#include <ext/standard/php_smart_string.h>
 
 
 extern zend_module_entry tarantool_module_entry;
@@ -33,7 +33,7 @@ extern zend_module_entry tarantool_module_entry;
 #include "TSRM.h"
 #endif
 
-#include <ext/standard/php_smart_str.h>
+#include <ext/standard/php_smart_string.h>
 #include <php_network.h>
 
 struct pool_manager;
@@ -78,19 +78,19 @@ ZEND_END_MODULE_GLOBALS(tarantool)
 ZEND_EXTERN_MODULE_GLOBALS(tarantool);
 
 typedef struct tarantool_object {
-	zend_object zo;
 	char       *host;
 	int         port;
 	char       *login;
 	char       *passwd;
 	php_stream *stream;
 	char       *persistent_id;
-	smart_str  *value;
+	smart_string  *value;
 	struct tp  *tps;
 	char        auth;
 	char       *greeting;
 	char       *salt;
 	struct tarantool_schema *schema;
+	zend_object zo;
 } tarantool_object;
 
 #ifdef ZTS
