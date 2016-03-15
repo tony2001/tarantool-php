@@ -153,6 +153,7 @@ int __tarantool_connect(tarantool_object *obj, zval *id) {
 		int rv = tntll_stream_fpid(obj->host, obj->port,
 					   obj->persistent_id, &obj->stream,
 					   &err);
+
 		if (obj->stream == NULL)
 			goto retry;
 		return status;
@@ -205,8 +206,8 @@ int __tarantool_reconnect(tarantool_object *obj, zval *id) {
 
 static void tarantool_free(zend_object *zobj) {
 	tarantool_object *obj = php_tarantool_object(zobj);
-	int store = TARANTOOL_G(manager) && !obj->stream;
 	if (!obj) return;
+	int store = TARANTOOL_G(manager) && obj->stream;
 	if (store) {
 		pool_manager_push_assure(TARANTOOL_G(manager), obj);
 	} else {
@@ -649,7 +650,7 @@ PHP_MINIT_FUNCTION(tarantool) {
 
 	/* Init global variables */
 	TARANTOOL_G(manager) = pool_manager_create(
-			INI_BOOL("tarantool.persistent"),
+			INI_INT("tarantool.persistent"),
 			INI_INT("tarantool.con_per_host")
 	);
 
