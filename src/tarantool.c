@@ -127,7 +127,7 @@ tarantool_stream_send(tarantool_object *obj) {
  */
 static size_t
 tarantool_stream_read(tarantool_object *obj, char *buf, size_t size) {
-	return tntll_stream_read(obj->stream, buf, size);
+	return tntll_stream_read2(obj->stream, buf, size);
 }
 
 static void
@@ -248,6 +248,8 @@ static int64_t tarantool_step_recv_ex(
 		zval *body,
 		long *sync_recv) {
 	char pack_len[5] = {0, 0, 0, 0, 0};
+	ZVAL_UNDEF(header);
+	ZVAL_UNDEF(body);
 	if (tarantool_stream_read(obj, pack_len, 5) != 5) {
 		THROW_EXC("Can't read query from server");
 		goto error;
