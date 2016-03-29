@@ -13,7 +13,7 @@
 
 
 extern zend_module_entry tarantool_module_entry;
-#define phpext_tarantool_ptr &tarantool_module_entry
+#define phpext_tarantool16_ptr &tarantool_module_entry
 
 #define PHP_TARANTOOL_VERSION "0.1.0"
 #define PHP_TARANTOOL_EXTNAME "tarantool16"
@@ -39,12 +39,12 @@ extern zend_module_entry tarantool_module_entry;
 struct pool_manager;
 struct tarantool_schema;
 
-#define SSTR_BEG(str) (str->c)
-#define SSTR_END(str) (str->c + str->a)
-#define SSTR_AWA(str) (str->a)
-#define SSTR_LEN(str) (str->len)
-#define SSTR_POS(str) (str->c + str->len)
-#define SSTR_DIF(str, end) (end - str->c)
+#define SSTR_BEG(str) ((str)->c)
+#define SSTR_END(str) ((str)->c + (str)->a)
+#define SSTR_AWA(str) ((str)->a)
+#define SSTR_LEN(str) ((str)->len)
+#define SSTR_POS(str) ((str)->c + (str)->len)
+#define SSTR_DIF(str, end) (end - (str)->c)
 
 PHP_MINIT_FUNCTION(tarantool);
 PHP_RINIT_FUNCTION(tarantool);
@@ -81,11 +81,13 @@ ZEND_EXTERN_MODULE_GLOBALS(tarantool);
 typedef struct tarantool_object {
 	char       *host;
 	int         port;
+	char       *hashkey1;
+	char       *hashkey2;
+	int			persistent;
 	char       *login;
 	char       *passwd;
 	php_stream *stream;
-	char       *persistent_id;
-	smart_string  *value;
+	smart_string value;
 	struct tp  *tps;
 	char        auth;
 	char       *greeting;
