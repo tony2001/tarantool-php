@@ -94,6 +94,7 @@ zend_module_entry tarantool_module_entry = {
 };
 
 PHP_INI_BEGIN()
+	STD_PHP_INI_ENTRY("tarantool.persistent16", "0", PHP_INI_ALL, OnUpdateBool, persistent16, zend_tarantool_globals, tarantool_globals)
 	STD_PHP_INI_ENTRY("tarantool.timeout", "10.0", PHP_INI_ALL, OnUpdateReal, timeout, zend_tarantool_globals, tarantool_globals)
 	STD_PHP_INI_ENTRY("tarantool.request_timeout", "10.0", PHP_INI_ALL, OnUpdateReal, request_timeout, zend_tarantool_globals, tarantool_globals)
 PHP_INI_END()
@@ -690,6 +691,7 @@ static void php_tarantool_init_globals(zend_tarantool_globals *tarantool_globals
 	tarantool_globals->sync_counter    = 0;
 	tarantool_globals->timeout         = 10.0;
 	tarantool_globals->request_timeout = 10.0;
+	tarantool_globals->persistent16    = 0;
 }
 
 static void tarantool_pconnect_dtor(zend_resource *rsrc)
@@ -750,9 +752,8 @@ PHP_METHOD(tarantool_class, __construct) /* {{{ */
 {
 	char *host = NULL; size_t host_len = 0;
 	long port = 0;
-	zend_bool persistent = 0;
 
-	TARANTOOL_PARSE_PARAMS(id, "|slb", &host, &host_len, &port, &persistent);
+	TARANTOOL_PARSE_PARAMS(id, "|sl", &host, &host_len, &port);
 	TARANTOOL_FETCH_OBJECT(obj);
 
 	/*
@@ -769,14 +770,14 @@ PHP_METHOD(tarantool_class, __construct) /* {{{ */
 	/* initialzie object structure */
 	obj->host = estrdup(host);
 	obj->port = port;
-	if (persistent) {
+	if (TARANTOOL_G(persistent16)) {
 		spprintf(&obj->hashkey1, 0, "tarantool:%s:%d", host, port);
 		spprintf(&obj->hashkey2, 0, "ptarantool:%s:%d", host, port);
 	} else {
 		obj->hashkey1 = NULL;
 		obj->hashkey2 = NULL;
 	}
-	obj->persistent = persistent;
+	obj->persistent = TARANTOOL_G(persistent16);
 	obj->auth = 0;
 	obj->greeting = (char *)ecalloc(sizeof(char), GREETING_SIZE);
 	obj->salt = NULL;

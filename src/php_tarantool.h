@@ -69,11 +69,9 @@ PHP_METHOD(tarantool_class, getSync);
 
 ZEND_BEGIN_MODULE_GLOBALS(tarantool)
 	long sync_counter;
-	long retry_count;
-	double retry_sleep;
 	double timeout;
 	double request_timeout;
-	struct pool_manager *manager;
+	zend_bool persistent16;
 ZEND_END_MODULE_GLOBALS(tarantool)
 
 ZEND_EXTERN_MODULE_GLOBALS(tarantool);
