@@ -94,7 +94,7 @@ zend_module_entry tarantool_module_entry = {
 };
 
 PHP_INI_BEGIN()
-	STD_PHP_INI_ENTRY("tarantool.persistent16", "0", PHP_INI_ALL, OnUpdateBool, persistent16, zend_tarantool_globals, tarantool_globals)
+	STD_PHP_INI_ENTRY("tarantool.persistent16", "1", PHP_INI_ALL, OnUpdateBool, persistent16, zend_tarantool_globals, tarantool_globals)
 	STD_PHP_INI_ENTRY("tarantool.timeout", "10.0", PHP_INI_ALL, OnUpdateReal, timeout, zend_tarantool_globals, tarantool_globals)
 	STD_PHP_INI_ENTRY("tarantool.request_timeout", "10.0", PHP_INI_ALL, OnUpdateReal, request_timeout, zend_tarantool_globals, tarantool_globals)
 PHP_INI_END()
@@ -691,7 +691,7 @@ static void php_tarantool_init_globals(zend_tarantool_globals *tarantool_globals
 	tarantool_globals->sync_counter    = 0;
 	tarantool_globals->timeout         = 10.0;
 	tarantool_globals->request_timeout = 10.0;
-	tarantool_globals->persistent16    = 0;
+	tarantool_globals->persistent16    = 1;
 }
 
 static void tarantool_pconnect_dtor(zend_resource *rsrc)
