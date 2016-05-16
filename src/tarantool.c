@@ -407,13 +407,16 @@ const zend_function_entry tarantool_class_methods[] = { /* {{{ */
 
 void pack_key(zval *args, char select, zval *arr) /* {{{ */
 {
-	if (args && Z_TYPE_P(args) == IS_ARRAY)
+	if (args && Z_TYPE_P(args) == IS_ARRAY) {
 		ZVAL_DUP(arr, args);
 		return;
+	}
+
 	if (select && (!args || Z_TYPE_P(args) == IS_NULL)) {
 		array_init(arr);
 		return;
 	}
+
 	array_init(arr);
 	Z_ADDREF_P(args);
 	add_next_index_zval(arr, args);
