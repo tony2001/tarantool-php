@@ -418,7 +418,9 @@ void pack_key(zval *args, char select, zval *arr) /* {{{ */
 	}
 
 	array_init(arr);
-	Z_ADDREF_P(args);
+	if (Z_REFCOUNTED_P(args)) {
+		Z_ADDREF_P(args);
+	}
 	add_next_index_zval(arr, args);
 }
 /* }}} */
@@ -519,7 +521,9 @@ int tarantool_update_verify_op(zval *op, long position, zval *arr) /* {{{ */
 		add_next_index_stringl(arr, Z_STRVAL_P(opstr), 1);
 		add_next_index_long(arr, Z_LVAL_P(oppos));
 		//SEPARATE_ZVAL_TO_MAKE_IS_REF(oparg);
-		Z_ADDREF_P(oparg);
+		if (Z_REFCOUNTED_P(arr)) {
+			Z_ADDREF_P(oparg);
+		}
 		add_next_index_zval(arr, oparg);
 		break;
 	default:
@@ -947,7 +951,7 @@ PHP_METHOD(tarantool_class, ping) /* {{{ */
 PHP_METHOD(tarantool_class, select) /* {{{ */
 {
 	zval *space = NULL, *index = NULL;
-	zval *key = NULL, key_new;
+	zval *key = NULL, key_new = {0};
 	zval *zlimit = NULL;
 	long limit = LONG_MAX-1, offset = 0, iterator = 0;
 
@@ -1043,7 +1047,7 @@ PHP_METHOD(tarantool_class, replace) /* {{{ */
 PHP_METHOD(tarantool_class, delete) /* {{{ */
 {
 	zval *space = NULL, *key = NULL, *index = NULL;
-	zval key_new;
+	zval key_new = {0};
 
 	TARANTOOL_PARSE_PARAMS(id, "zz|z", &space, &key, &index);
 	TARANTOOL_FETCH_OBJECT(obj);
@@ -1076,7 +1080,7 @@ PHP_METHOD(tarantool_class, delete) /* {{{ */
 PHP_METHOD(tarantool_class, call) /* {{{ */
 {
 	char *proc; size_t proc_len;
-	zval *tuple = NULL, tuple_new, *zsync = NULL;
+	zval *tuple = NULL, tuple_new = {0}, *zsync = NULL;
 
 	TARANTOOL_PARSE_PARAMS(id, "s|zz/", &proc, &proc_len, &tuple, &zsync);
 	TARANTOOL_FETCH_OBJECT(obj);
@@ -1108,7 +1112,7 @@ PHP_METHOD(tarantool_class, call) /* {{{ */
 PHP_METHOD(tarantool_class, eval) /* {{{ */
 {
 	char *proc; size_t proc_len;
-	zval *tuple = NULL, tuple_new;
+	zval *tuple = NULL, tuple_new = {0};
 
 	TARANTOOL_PARSE_PARAMS(id, "s|z", &proc, &proc_len, &tuple);
 	TARANTOOL_FETCH_OBJECT(obj);
@@ -1133,7 +1137,7 @@ PHP_METHOD(tarantool_class, eval) /* {{{ */
 PHP_METHOD(tarantool_class, update) /* {{{ */
 {
 	zval *space = NULL, *key = NULL, *index = NULL, *args = NULL;
-	zval key_new, v_args;
+	zval key_new = {0}, v_args = {0};
 
 	TARANTOOL_PARSE_PARAMS(id, "zza|z", &space, &key, &args, &index);
 	TARANTOOL_FETCH_OBJECT(obj);
