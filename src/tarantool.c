@@ -107,7 +107,7 @@ PHP_INI_BEGIN()
 			  tarantool_globals)
 PHP_INI_END()
 
-#ifdef COMPILE_DL_TARANTOOL
+#ifdef COMPILE_DL_TARANTOOL16
 ZEND_GET_MODULE(tarantool)
 #endif
 
