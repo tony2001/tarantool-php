@@ -521,7 +521,7 @@ int tarantool_update_verify_op(zval *op, long position, zval *arr) /* {{{ */
 		add_next_index_stringl(arr, Z_STRVAL_P(opstr), 1);
 		add_next_index_long(arr, Z_LVAL_P(oppos));
 		//SEPARATE_ZVAL_TO_MAKE_IS_REF(oparg);
-		if (Z_REFCOUNTED_P(arr)) {
+		if (Z_REFCOUNTED_P(oparg)) {
 			Z_ADDREF_P(oparg);
 		}
 		add_next_index_zval(arr, oparg);
