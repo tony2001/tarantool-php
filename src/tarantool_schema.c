@@ -48,8 +48,8 @@ mh_indexcmp_key_eq(
 #define mh_node_t const struct schema_index_value *
 #define mh_key_t  const struct schema_key *
 
-#define MH_CALLOC(x, y) pecalloc((x), (y), 1)
-#define MH_FREE(x)      pefree((x), 1)
+#define MH_CALLOC(x, y) ecalloc((x), (y))
+#define MH_FREE(x)      efree((x))
 
 #define mh_name               _schema_index
 #define MH_SOURCE             1
@@ -58,7 +58,7 @@ mh_indexcmp_key_eq(
 static inline void
 schema_index_value_free(const struct schema_index_value *val) {
 	if (val) {
-		pefree(val->index_name, 1);
+		efree(val->index_name);
 		/*
 		int i = 0;
 		for (i = val->index_parts_len; i > 0; --i)
@@ -92,8 +92,8 @@ schema_index_free(struct mh_schema_index_t *schema) {
 			mh_schema_index_del(schema, index_slot, NULL);
 		} while (0);
 		schema_index_value_free(ivalue);
-		if (iv1) pefree((void *)iv1, 1);
-		if (iv2) pefree((void *)iv2, 1);
+		if (iv1) efree((void *)iv1);
+		if (iv2) efree((void *)iv2);
 	}
 }
 
@@ -128,8 +128,8 @@ mh_spacecmp_key_eq(
 #define mh_node_t const struct schema_space_value *
 #define mh_key_t  const struct schema_key *
 
-#define MH_CALLOC(x, y) pecalloc((x), (y), 1)
-#define MH_FREE(x)      pefree((x), 1)
+#define MH_CALLOC(x, y) ecalloc((x), (y))
+#define MH_FREE(x)      efree((x))
 
 #define mh_name               _schema_space
 #define MH_SOURCE             1
@@ -139,7 +139,7 @@ mh_spacecmp_key_eq(
 static inline void
 schema_space_value_free(const struct schema_space_value *val) {
 	if (val) {
-		pefree(val->space_name, 1);
+		efree(val->space_name);
 		/*
 		int i = 0;
 		for (i = val->schema_list_len; i > 0; --i)
@@ -177,20 +177,18 @@ schema_space_free(struct mh_schema_space_t *schema) {
 			mh_schema_space_del(schema, space_slot, NULL);
 		} while (0);
 		schema_space_value_free(svalue);
-		if (sv1) pefree((void *)sv1, 1);
-		if (sv2) pefree((void *)sv2, 1);
+		if (sv1) efree((void *)sv1);
+		if (sv2) efree((void *)sv2);
 	}
 }
 
-static inline int
-schema_add_space(
-		struct mh_schema_space_t *schema,
-		const char **data) {
+static inline int schema_add_space(struct mh_schema_space_t *schema, const char **data)
+{
 	const char *tuple = *data;
 	if (mp_typeof(*tuple) != MP_ARRAY) goto error;
 	uint32_t tuple_len = mp_decode_array(&tuple);
 	if (tuple_len < 6) goto error;
-	struct schema_space_value *space_string = pemalloc(sizeof(struct schema_space_value), 1);
+	struct schema_space_value *space_string = emalloc(sizeof(struct schema_space_value));
 	if (!space_string) goto error;
 	memset(space_string, 0, sizeof(struct schema_space_value));
 	if (mp_typeof(*tuple) != MP_UINT) goto error;
@@ -199,7 +197,7 @@ schema_add_space(
 	mp_next(&tuple);
 	if (mp_typeof(*tuple) != MP_STR) goto error;
 	const char *space_name_tmp = mp_decode_str(&tuple, &space_string->space_name_len);
-	space_string->space_name = pemalloc(space_string->space_name_len, 1);
+	space_string->space_name = emalloc(space_string->space_name_len);
 	if (!space_string->space_name) goto error;
 	memcpy(space_string->space_name, space_name_tmp, space_string->space_name_len);
 	/* skip engine name */
@@ -215,7 +213,7 @@ schema_add_space(
 	if (mp_typeof(*tuple) != MP_ARRAY) goto error;
 	uint32_t fmt_len = mp_decode_array(&tuple);
 	space_string->schema_list_len = fmt_len;
-	space_string->schema_list = pecalloc(fmt_len, sizeof(struct schema_field_value), 1);
+	space_string->schema_list = ecalloc(fmt_len, sizeof(struct schema_field_value));
 	if (!space_string->schema_list) goto error;
 	while (fmt_len-- > 0) {
 		struct schema_field_value *val = &(space_string->schema_list[
@@ -229,7 +227,7 @@ schema_add_space(
 			if (memcmp(sfield, "name", sfield_len) == 0) {
 				if (mp_typeof(*tuple) != MP_STR) goto error;
 				sfield = mp_decode_str(&tuple, &val->field_name_len);
-				val->field_name = pemalloc(val->field_name_len, 1);
+				val->field_name = emalloc(val->field_name_len);
 				if (!val->field_name) goto error;
 				memcpy(val->field_name, sfield, val->field_name_len);
 			} else if (memcmp(sfield, "type", sfield_len) == 0) {
@@ -253,7 +251,7 @@ schema_add_space(
 	*/
 	space_string->index_hash = mh_schema_index_new();
 	if (!space_string->index_hash) goto error;
-	struct schema_space_value *space_number = pemalloc(sizeof(struct schema_space_value), 1);
+	struct schema_space_value *space_number = emalloc(sizeof(struct schema_space_value));
 	if (!space_number) goto error;
 	memcpy(space_number, space_string, sizeof(struct schema_space_value));
 	space_string->key.id = space_string->space_name;
@@ -292,10 +290,8 @@ int tarantool_schema_add_spaces(
 	return 0;
 }
 
-static inline int
-schema_add_index(
-		struct mh_schema_space_t *schema,
-		const char **data) {
+static inline int schema_add_index(struct mh_schema_space_t *schema, const char **data)
+{
 	const char *tuple = *data;
 	if (mp_typeof(*tuple) != MP_ARRAY) goto error;
 	int64_t tuple_len = mp_decode_array(&tuple);
@@ -307,14 +303,14 @@ schema_add_index(
 	if (space_slot == mh_end(schema))
 		return -1;
 	const struct schema_space_value *space = *mh_schema_space_node(schema, space_slot);
-	struct schema_index_value *index_string = pemalloc(sizeof(struct schema_index_value), 1);
+	struct schema_index_value *index_string = emalloc(sizeof(struct schema_index_value));
 	if (!index_string) goto error;
 	memset(index_string, 0, sizeof(struct schema_index_value));
 	if (mp_typeof(*tuple) != MP_UINT) goto error;
 	index_string->index_number = mp_decode_uint(&tuple);
 	if (mp_typeof(*tuple) != MP_STR) goto error;
 	const char *index_name_tmp = mp_decode_str(&tuple, &index_string->index_name_len);
-	index_string->index_name = pemalloc(index_string->index_name_len, 1);
+	index_string->index_name = emalloc(index_string->index_name_len);
 	if (!index_string->index_name) goto error;
 	memcpy(index_string->index_name, index_name_tmp, index_string->index_name_len);
 	/* skip index type */
@@ -352,7 +348,7 @@ schema_add_index(
 		index_string->index_parts_len++;
 	}
 	*/
-	struct schema_index_value *index_number = pemalloc(sizeof(struct schema_index_value), 1);
+	struct schema_index_value *index_number = emalloc(sizeof(struct schema_index_value));
 	if (!index_number) goto error;
 	memcpy(index_number, index_string, sizeof(struct schema_index_value));
 	index_string->key.id = index_string->index_name;
@@ -421,7 +417,7 @@ int32_t tarantool_schema_get_iid_by_string(
 }
 
 struct tarantool_schema *tarantool_schema_new() {
-	struct tarantool_schema *obj = pemalloc(sizeof(struct tarantool_schema *), 1);
+	struct tarantool_schema *obj = emalloc(sizeof(struct tarantool_schema *));
 	obj->space_hash = mh_schema_space_new();
 	return obj;
 }

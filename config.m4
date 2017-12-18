@@ -5,9 +5,7 @@ PHP_ARG_ENABLE(tarantool16, for tarantool support,
 if test "$PHP_TARANTOOL16" != "no"; then
     PHP_NEW_EXTENSION(tarantool16,    \
         src/tarantool.c             \
-        src/tarantool_network.c     \
         src/tarantool_msgpack.c     \
-        src/tarantool_manager.c     \
         src/tarantool_schema.c      \
         src/tarantool_proto.c       \
         src/tarantool_tp.c          \

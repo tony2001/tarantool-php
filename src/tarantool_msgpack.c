@@ -19,7 +19,7 @@ int smart_string_ensure(smart_string *str, size_t len) {
 	if (SSTR_LEN(str) + len > needed)
 		needed = SSTR_LEN(str) + len;
 	register size_t __n1;
-	smart_string_alloc4(str, needed, 1, __n1);
+	smart_string_alloc4(str, needed, 0, __n1);
 	return 0;
 }
 
@@ -189,6 +189,7 @@ void php_mp_pack(smart_string *str, zval *val) {
 		break;
 	case IS_TRUE:
 		php_mp_pack_bool(str, 1);
+		break;
 	case IS_FALSE:
 		php_mp_pack_bool(str, 0);
 		break;
@@ -329,11 +330,10 @@ ptrdiff_t php_mp_unpack_map(zval *oval, char **str) {
 			/* FALLTHROUGH */
 		default: {
 //			char k[256];
-//			char *op = op_to_string(Z_TYPE_P(key));
+//			char *op = op_to_string(Z_TYPE(key));
 //			printf("oplen: %d\n", strlen(op));
 //			printf("op: %s\n", op);
-//			size_t len = sprintf(k, 256, "Bad key type for PHP "
-//					     "Array: '%s'", op);
+//			snprintf(k, sizeof(k), "Bad key type for PHP Array: '%s'", op);
 //			THROW_EXC(k);
 			THROW_EXC("Bad key type for PHP Array");
 			goto error;
@@ -345,7 +345,6 @@ ptrdiff_t php_mp_unpack_map(zval *oval, char **str) {
 error:
 		zval_ptr_dtor(&key);
 		zval_ptr_dtor(&value);
-		zval_ptr_dtor(oval);
 		return FAILURE;
 	}
 	return SUCCESS;
@@ -356,8 +355,9 @@ ptrdiff_t php_mp_unpack_array(zval *oval, char **str) {
 	array_init_size(oval, len);
 	while (len-- > 0) {
 		zval value;
+		ZVAL_UNDEF(&value);
 		if (php_mp_unpack(&value, str) == FAILURE) {
-			zval_ptr_dtor(oval);
+			zval_ptr_dtor(&value);
 			return FAILURE;
 		}
 		add_next_index_zval(oval, &value);
