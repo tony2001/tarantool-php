@@ -18,8 +18,7 @@ int smart_string_ensure(smart_string *str, size_t len) {
 	size_t needed = str->a * 2;
 	if (SSTR_LEN(str) + len > needed)
 		needed = SSTR_LEN(str) + len;
-	register size_t __n1;
-	smart_string_alloc4(str, needed, 0, __n1);
+	smart_string_alloc(str, needed, 0);
 	return 0;
 }
 

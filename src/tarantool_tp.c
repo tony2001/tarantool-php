@@ -11,8 +11,7 @@ char *tarantool_tp_reserve(struct tp *p, size_t req, size_t *size) {
 	size_t needed = str->a * 2;
 	if (str->len + req > needed)
 		needed = str->len + req;
-	register size_t __n1;
-	smart_string_alloc4(str, needed, 1, __n1);
+	smart_string_alloc(str, needed, 1);
 	return str->c;
 }
 
