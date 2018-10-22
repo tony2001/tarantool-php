@@ -16,6 +16,7 @@
 static int le_ptarantool;
 
 int __tarantool_authenticate(tarantool_object *obj);
+static void destroy_tarantool_object(zend_object *obj);
 
 double now_gettimeofday(void)
 {
@@ -246,19 +247,24 @@ int __tarantool_reconnect(tarantool_object *obj, zval *id)
 	return __tarantool_connect(obj, id);
 }
 
-static void tarantool_free(zend_object *zobj) /* {{{ */
-{
+static void destroy_tarantool_object(zend_object *zobj) {
 	tarantool_object *obj = php_tarantool_object(zobj);
-
-	if (!obj) {
-		return;
-	}
 
 	if (!obj->persistent) {
 		tarantool_stream_close(obj);
 	} else {
 		efree(obj->hashkey1);
 		efree(obj->hashkey2);
+	}
+}
+
+
+static void tarantool_free(zend_object *zobj) /* {{{ */
+{
+	tarantool_object *obj = php_tarantool_object(zobj);
+
+	if (!obj) {
+		return;
 	}
 
 	if (obj->greeting) {
@@ -734,6 +740,7 @@ PHP_MINIT_FUNCTION(tarantool) /* {{{ */
 	tarantool_class_ptr = zend_register_internal_class(&tarantool_class);
 	memcpy(&tarantool_obj_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
 	tarantool_obj_handlers.offset = XtOffsetOf(tarantool_object, zo);
+	tarantool_obj_handlers.dtor_obj = destroy_tarantool_object;
 	tarantool_obj_handlers.free_obj = tarantool_free;
 
 	return SUCCESS;
