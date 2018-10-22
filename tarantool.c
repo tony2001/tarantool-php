@@ -354,6 +354,7 @@ alloc_tarantool_object(zend_class_entry *entry TSRMLS_DC);
 /* free tarantool class instance */
 static void
 free_tarantool_object(zend_object *obj TSRMLS_DC);
+static void destroy_tarantool_object(zend_object *obj);
 
 /* establic connection */
 static php_stream *
@@ -435,6 +436,7 @@ PHP_MINIT_FUNCTION(tarantool)
 
 	memcpy(&tarantool_obj_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
 	tarantool_obj_handlers.offset = XtOffsetOf(tarantool_object, zo);
+	tarantool_obj_handlers.dtor_obj = destroy_tarantool_object;
 	tarantool_obj_handlers.free_obj = free_tarantool_object;
 
 	INIT_CLASS_ENTRY(ce, "Tarantool_IO_Exception", NULL);
@@ -1916,6 +1918,20 @@ alloc_tarantool_object(zend_class_entry *entry TSRMLS_DC)
 	return &tnt->zo;
 }
 
+static void destroy_tarantool_object(zend_object *obj) {
+	tarantool_object *tnt = php_tarantool_object(obj);
+
+	if (tnt->stream) {
+		php_stream_close(tnt->stream);
+		tnt->stream = NULL;
+	}
+
+	if (tnt->admin_stream) {
+		php_stream_close(tnt->admin_stream);
+		tnt->admin_stream = NULL;
+	}
+}
+
 static void
 free_tarantool_object(zend_object *obj TSRMLS_DC)
 {
@@ -1926,13 +1942,6 @@ free_tarantool_object(zend_object *obj TSRMLS_DC)
 	if (tnt->host) {
 		efree(tnt->host);
 	}
-
-	if (tnt->stream)
-		php_stream_close(tnt->stream);
-
-	if (tnt->admin_stream)
-		php_stream_close(tnt->admin_stream);
-
 	io_buf_destroy(tnt->io_buf);
 	io_buf_destroy(tnt->splice_field);
 }
