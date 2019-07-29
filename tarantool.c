@@ -606,22 +606,14 @@ PHP_METHOD(tarantool_class, select)
 		return;
 	}
 
-	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
-								"select failed: create array failed");
-		return;
-	}
+	array_init(return_value);
 
 	/* put count to result array */
 	add_assoc_long(return_value, "count", response->count);
 
 	/* put tuple list to result array */
 	zval tuples_list;
-	if (array_init(&tuples_list) == FAILURE) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
-								"select failed: create array failed");
-		return;
-	}
+	array_init(&tuples_list);
 
 	/* read tuples for responce */
 	int i;
@@ -715,11 +707,7 @@ PHP_METHOD(tarantool_class, insert)
 	 * fill return value
 	 */
 
-	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
-								"insert failed: create array failed");
-		return;
-	}
+	array_init(return_value);
 
 	/* put count to result array */
 	add_assoc_long(return_value, "count", response->count);
@@ -947,11 +935,7 @@ PHP_METHOD(tarantool_class, update_fields)
 	 * fill return value
 	 */
 
-	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
-								"update fields failed: create array failed");
-		return;
-	}
+	array_init(return_value);
 
 	/* put count to result array */
 	add_assoc_long(return_value, "count", response->count);
@@ -1047,11 +1031,7 @@ PHP_METHOD(tarantool_class, delete)
 	 * fill return value
 	 */
 
-	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
-								"delete failed: create array failed");
-		return;
-	}
+	array_init(return_value);
 
 	/* put count to result array */
 	add_assoc_long(return_value, "count", response->count);
@@ -1146,22 +1126,14 @@ PHP_METHOD(tarantool_class, call)
 		return;
 	}
 
-	if (array_init(return_value) != SUCCESS) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
-								"call failed: create array failed");
-		return;
-	}
+	array_init(return_value);
 
 	/* put count to result array */
 	add_assoc_long(return_value, "count", response->count);
 
 	/* put tuple list to result array */
 	zval tuples_list;
-	if (array_init(&tuples_list) == FAILURE) {
-		zend_throw_exception_ex(zend_exception_get_default(TSRMLS_C), 0 TSRMLS_CC,
-								"call failed: create array failed");
-		return;
-	}
+	array_init(&tuples_list);
 
 	/* read tuples for responce */
 	int i;
@@ -1466,9 +1438,7 @@ io_buf_read_field(struct io_buf *buf, zval *tuple)
 static bool
 io_buf_read_tuple(struct io_buf *buf, zval *tuple)
 {
-	if (array_init(tuple) == FAILURE) {
-		return false;
-	}
+	array_init(tuple);
 
 	int32_t size;
 	if (!io_buf_read_int32(buf, &size))
